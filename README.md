@@ -21,7 +21,7 @@ python mhd-boris.py 1.6
 python mhd-boris.py 1.4
 ```
 
-And then a anlyze with:
+And then analyze with:
 ```python
 python analysis.py
 ```
