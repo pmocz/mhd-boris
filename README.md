@@ -26,9 +26,15 @@ And then a anlyze with:
 python analysis.py
 ```
 
+Density:
+
 ![Analysis1](./analysis_rho.png)
 
+Magnetic Pressure:
+
 ![Analysis2](./analysis_P_B.png)
+
+Timesteps:
 
 ![Analysis3](./analysis_dt.png)
 
