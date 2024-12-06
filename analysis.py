@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 def main():
 
-  max_cfs = [1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
+  max_cfs = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
 
   rho = {}
   P_B = {}
@@ -41,7 +41,7 @@ def main():
   plt.figure()
   for max_cf in max_cfs:
     plt.plot(np.cumsum(dt[max_cf]), dt[max_cf], label='cf_max = '+str(max_cf))
-  plt.legend(loc='center left')
+  plt.legend(loc='lower left')
   plt.xlabel('t')
   plt.savefig('analysis_dt.png')
   plt.show()

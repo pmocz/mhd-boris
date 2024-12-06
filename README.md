@@ -13,12 +13,12 @@ with the Boris Integrator
 Run the simulations with:
 
 ```python
-python mhd-boris.py 2.4
-python mhd-boris.py 2.2
 python mhd-boris.py 2.0
 python mhd-boris.py 1.8
 python mhd-boris.py 1.6
 python mhd-boris.py 1.4
+python mhd-boris.py 1.2
+python mhd-boris.py 1.0
 ```
 
 And then analyze with:

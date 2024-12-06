@@ -272,18 +272,19 @@ def getFlux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, Bx_L, Bx_R, By_L, By
   c0_R = np.sqrt( gamma*(P_R-0.5*(Bx_R**2+By_R**2))/rho_R )
   ca_L = np.sqrt( (Bx_L**2+By_L**2)/rho_L )
   ca_R = np.sqrt( (Bx_R**2+By_R**2)/rho_R )
-  cf_L = np.sqrt( 0.5*(c0_L**2+ca_L**2) + 0.5*np.sqrt((c0_L**2+ca_L**2)**2) )
-  cf_R = np.sqrt( 0.5*(c0_R**2+ca_R**2) + 0.5*np.sqrt((c0_R**2+ca_R**2)**2) )
+  cf_L = np.sqrt( c0_L**2+ca_L**2 )
+  cf_R = np.sqrt( c0_R**2+ca_R**2 )
   # boris
-  alpha_L = np.minimum(1.0, max_cf / np.sqrt(c0_L**2+ca_L**2))
-  alpha_R = np.minimum(1.0, max_cf / np.sqrt(c0_R**2+ca_R**2))
+  alpha_L = np.minimum(1.0, max_cf / cf_L)
+  alpha_R = np.minimum(1.0, max_cf / cf_R)
   alpha = np.minimum(alpha_L, alpha_R)
-  flux_Momx *= alpha
-  flux_Momy *= alpha
+  alphaSq = alpha ** 2
+  flux_Momx *= alphaSq
+  flux_Momy *= alphaSq
   cf_L *= alpha_L
   cf_R *= alpha_R
 
-  C_L = cf_L+ np.abs(vx_L)
+  C_L = cf_L + np.abs(vx_L)
   C_R = cf_R + np.abs(vx_R)
   C = np.maximum( C_L, C_R )
   
