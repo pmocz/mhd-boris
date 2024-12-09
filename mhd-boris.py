@@ -376,7 +376,7 @@ def main():
     # get time step (CFL) = dx / max signal speed
     c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2))/rho )
     ca = np.sqrt( (Bx**2+By**2)/rho )
-    cf = np.sqrt( 0.5*(c0**2+ca**2) + 0.5*np.sqrt((c0**2+ca**2)**2) )
+    cf = np.sqrt( c0**2+ca**2 )
     max_cf = np.max(cf)
     alpha = np.minimum(1.0, cf_limit / np.sqrt(c0**2+ca**2))
     #cf *= alpha
@@ -471,10 +471,19 @@ def main():
   plt.ylim(0.001, 0.0014)
   plt.savefig('dt_'+str(cf_limit)+'.png',dpi=240)
 
-  P_B = np.sqrt(bx**2+by**2)
-  # Save rho, P_B, and dt_sav
+  # Save rho, P_B, v, vA, cf, and dt_sav
+  Bx, By = getBavg(bx, by)
+  rho, vx, vy, P = getPrimitive( Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit )
+  P_B = 0.5*np.sqrt(Bx**2+By**2)
+  v = np.sqrt(vx**2+vy**2)
+  c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2))/rho )
+  ca = np.sqrt( (Bx**2+By**2)/rho )
+  cf = np.sqrt( c0**2+ca**2 )
   np.save('data_rho_'+str(cf_limit)+'.npy', rho.T)
   np.save('data_P_B_'+str(cf_limit)+'.npy', P_B.T)
+  np.save('data_v_'+str(cf_limit)+'.npy', v.T)
+  np.save('data_ca_'+str(cf_limit)+'.npy', ca.T)
+  np.save('data_cf_'+str(cf_limit)+'.npy', cf.T)
   np.save('data_dt_'+str(cf_limit)+'.npy', dt_sav)
 
       

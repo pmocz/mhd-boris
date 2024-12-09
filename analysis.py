@@ -11,17 +11,26 @@ def main():
 
   rho = {}
   P_B = {}
+  v = {}
+  ca = {}
+  cf = {}
   dt = {}
 
   # Load the data (rho, P_B, dt)
   for cf_limit in cf_limits:
     rho[cf_limit] = np.load('data_rho_'+str(cf_limit)+'.npy')
     P_B[cf_limit] = np.load('data_P_B_'+str(cf_limit)+'.npy')
+    v[cf_limit] = np.load('data_v_'+str(cf_limit)+'.npy')
+    ca[cf_limit] = np.load('data_ca_'+str(cf_limit)+'.npy')
+    cf[cf_limit] = np.load('data_cf_'+str(cf_limit)+'.npy')
     dt[cf_limit] = np.load('data_dt_'+str(cf_limit)+'.npy')
 
   # stack the rho next to each other and plot it as an image
   rho_all = np.hstack([rho[cf_limit] for cf_limit in cf_limits])
   P_B_all = np.hstack([P_B[cf_limit] for cf_limit in cf_limits])
+  v_all = np.hstack([v[cf_limit] for cf_limit in cf_limits])
+  ca_all = np.hstack([ca[cf_limit] for cf_limit in cf_limits])
+  cf_all = np.hstack([cf[cf_limit] for cf_limit in cf_limits])
 
   plt.figure(figsize=(12, 4))
   plt.imshow(rho_all, aspect=1, cmap='jet')
@@ -35,6 +44,27 @@ def main():
   plt.colorbar()
   plt.xlabel('cf_max = '+str(cf_limits))
   plt.savefig('analysis_P_B.png')
+  plt.show()
+
+  plt.figure(figsize=(12, 4))
+  plt.imshow(v_all, aspect=1, cmap='jet')
+  plt.colorbar()
+  plt.xlabel('cf_max = '+str(cf_limits))
+  plt.savefig('analysis_v.png')
+  plt.show()
+
+  plt.figure(figsize=(12, 4))
+  plt.imshow(ca_all, aspect=1, cmap='jet')
+  plt.colorbar()
+  plt.xlabel('cf_max = '+str(cf_limits))
+  plt.savefig('analysis_ca.png')
+  plt.show()
+
+  plt.figure(figsize=(12, 4))
+  plt.imshow(cf_all, aspect=1, cmap='jet')
+  plt.colorbar()
+  plt.xlabel('cf_max = '+str(cf_limits))
+  plt.savefig('analysis_cf.png')
   plt.show()
 
   # plot the dt for each cf_limit
