@@ -111,6 +111,7 @@ def getPrimitive( Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit ):
   vy  = Momy / rho / vol
   P   = (Energy/vol - 0.5*rho*(vx**2+vy**2) - 0.5*(Bx**2+By**2)) * (gamma-1) + 0.5*(Bx**2+By**2)
 
+  # Try 2: apply boris factor in recovering the velocity
   c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2))/rho )
   ca = np.sqrt( (Bx**2+By**2)/rho )
   cf = np.sqrt( c0**2+ca**2 )
@@ -283,7 +284,7 @@ def getFlux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, Bx_L, Bx_R, By_L, By
   ca_R = np.sqrt( (Bx_R**2+By_R**2)/rho_R )
   cf_L = np.sqrt( c0_L**2+ca_L**2 )
   cf_R = np.sqrt( c0_R**2+ca_R**2 )
-  # boris
+  # apply boris factor to wave speeds and momentum flux
   #alpha_L = np.minimum(1.0, cf_limit / cf_L)
   #alpha_R = np.minimum(1.0, cf_limit / cf_R)
   #alpha = np.minimum(alpha_L, alpha_R)
