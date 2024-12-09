@@ -279,8 +279,9 @@ def getFlux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, Bx_L, Bx_R, By_L, By
   alpha_R = np.minimum(1.0, max_cf / cf_R)
   alpha = np.minimum(alpha_L, alpha_R)
   alphaSq = alpha ** 2
-  flux_Momx *= alphaSq
-  flux_Momy *= alphaSq
+  # Try 1
+  #flux_Momx *= alphaSq
+  #flux_Momy *= alphaSq
   cf_L *= alpha_L
   cf_R *= alpha_R
 

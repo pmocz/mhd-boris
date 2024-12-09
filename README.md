@@ -19,6 +19,9 @@ python mhd-boris.py 1.6
 python mhd-boris.py 1.4
 python mhd-boris.py 1.2
 python mhd-boris.py 1.0
+python mhd-boris.py 0.8
+python mhd-boris.py 0.6
+python mhd-boris.py 0.4
 ```
 
 And then analyze with:
