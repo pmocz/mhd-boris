@@ -10,7 +10,7 @@ Based on
 Simulate the Orszag-Tang vortex MHD problem
 with the Boris Integrator
 
-Run the simulations with:
+Run the simulations and produce analysis with:
 
 ```python
 python mhd-boris.py 2.0
@@ -22,10 +22,6 @@ python mhd-boris.py 1.0
 python mhd-boris.py 0.8
 python mhd-boris.py 0.6
 python mhd-boris.py 0.4
-```
-
-And then analyze with:
-```python
 python analysis.py
 ```
 
