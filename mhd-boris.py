@@ -10,6 +10,8 @@ Simulate the Orszag-Tang vortex MHD problem
 
 with Boris Integrator to control timesteps!
 
+The original problem has cf_max ~ 1.9, u_max ~ 1.6
+
 """
 
 def getCurl(Az, dx):
@@ -88,7 +90,7 @@ def getConserved( rho, vx, vy, P, Bx, By, gamma, vol ):
   return Mass, Momx, Momy, Energy
 
 
-def getPrimitive( Mass, Momx, Momy, Energy, Bx, By, gamma, vol ):
+def getPrimitive( Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit ):
   """
     Calculate the primitive variable from the conservative
   Mass     is matrix of mass in cells
@@ -108,6 +110,13 @@ def getPrimitive( Mass, Momx, Momy, Energy, Bx, By, gamma, vol ):
   vx  = Momx / rho / vol
   vy  = Momy / rho / vol
   P   = (Energy/vol - 0.5*rho*(vx**2+vy**2) - 0.5*(Bx**2+By**2)) * (gamma-1) + 0.5*(Bx**2+By**2)
+
+  c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2))/rho )
+  ca = np.sqrt( (Bx**2+By**2)/rho )
+  cf = np.sqrt( c0**2+ca**2 )
+  alpha = np.minimum(1.0, cf_limit / cf)
+  vx *= alpha
+  vy *= alpha
 
   return rho, vx, vy, P
 
@@ -224,7 +233,7 @@ def constrainedTransport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
   return bx, by 
 
 
-def getFlux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, Bx_L, Bx_R, By_L, By_R, gamma, max_cf):
+def getFlux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, Bx_L, Bx_R, By_L, By_R, gamma, cf_limit):
   """
     Calculate fluxed between 2 states with local Lax-Friedrichs/Rusanov rule 
   rho_L        is a matrix of left-state  density
@@ -275,15 +284,15 @@ def getFlux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, Bx_L, Bx_R, By_L, By
   cf_L = np.sqrt( c0_L**2+ca_L**2 )
   cf_R = np.sqrt( c0_R**2+ca_R**2 )
   # boris
-  alpha_L = np.minimum(1.0, max_cf / cf_L)
-  alpha_R = np.minimum(1.0, max_cf / cf_R)
-  alpha = np.minimum(alpha_L, alpha_R)
-  alphaSq = alpha ** 2
-  # Try 1
-  flux_Momx *= alphaSq
-  flux_Momy *= alphaSq
-  cf_L *= alpha_L
-  cf_R *= alpha_R
+  #alpha_L = np.minimum(1.0, cf_limit / cf_L)
+  #alpha_R = np.minimum(1.0, cf_limit / cf_R)
+  #alpha = np.minimum(alpha_L, alpha_R)
+  #alphaSq = alpha ** 2
+  ## Try 1
+  #flux_Momx *= alphaSq
+  #flux_Momy *= alphaSq
+  #cf_L *= alpha_L
+  #cf_R *= alpha_R
 
   C_L = cf_L + np.abs(vx_L)
   C_R = cf_R + np.abs(vx_R)
@@ -306,12 +315,12 @@ def main():
   
   # Check for command line arguments
   if len(sys.argv) != 2:
-    print("Usage: python mhd-boris.py <max_cf>")
+    print("Usage: python mhd-boris.py <cf_limit>")
     return
   
   # Parse command line argument
   # for the boris integrator (try 1.0, 1.5, 2.0)
-  max_cf = float(sys.argv[1])
+  cf_limit = float(sys.argv[1])
 
   # Simulation parameters
   N                      = 128 # resolution
@@ -362,15 +371,17 @@ def main():
     
     # get Primitive variables
     Bx, By = getBavg(bx, by)
-    rho, vx, vy, P = getPrimitive( Mass, Momx, Momy, Energy, Bx, By, gamma, vol )
+    rho, vx, vy, P = getPrimitive( Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit )
     
     # get time step (CFL) = dx / max signal speed
     c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2))/rho )
     ca = np.sqrt( (Bx**2+By**2)/rho )
     cf = np.sqrt( 0.5*(c0**2+ca**2) + 0.5*np.sqrt((c0**2+ca**2)**2) )
-    alpha = np.minimum(1.0, max_cf / np.sqrt(c0**2+ca**2))
-    cf *= alpha
+    max_cf = np.max(cf)
+    alpha = np.minimum(1.0, cf_limit / np.sqrt(c0**2+ca**2))
+    #cf *= alpha
     dt = courant_fac * np.min( dx / (cf + np.sqrt(vx**2+vy**2)) )
+    u_max = np.max(np.sqrt(vx**2+vy**2))
 
     plotThisTurn = False
     if t + dt > outputCount*tOut:
@@ -411,8 +422,8 @@ def main():
     By_XL,  By_XR,  By_YL,  By_YR  = extrapolateInSpaceToFace(By_prime,  By_dx,  By_dy,  dx)
     
     # compute fluxes (local Lax-Friedrichs/Rusanov)
-    flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X, flux_By_X = getFlux(rho_XL, rho_XR, vx_XL, vx_XR, vy_XL, vy_XR, P_XL, P_XR, Bx_XL, Bx_XR, By_XL, By_XR, gamma, max_cf)
-    flux_Mass_Y, flux_Momy_Y, flux_Momx_Y, flux_Energy_Y, flux_Bx_Y = getFlux(rho_YL, rho_YR, vy_YL, vy_YR, vx_YL, vx_YR, P_YL, P_YR, By_YL, By_YR, Bx_YL, Bx_YR, gamma, max_cf)
+    flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X, flux_By_X = getFlux(rho_XL, rho_XR, vx_XL, vx_XR, vy_XL, vy_XR, P_XL, P_XR, Bx_XL, Bx_XR, By_XL, By_XR, gamma, cf_limit)
+    flux_Mass_Y, flux_Momy_Y, flux_Momx_Y, flux_Energy_Y, flux_Bx_Y = getFlux(rho_YL, rho_YR, vy_YL, vy_YR, vx_YL, vx_YR, P_YL, P_YR, By_YL, By_YR, Bx_YL, Bx_YR, gamma, cf_limit)
     
     # update solution
     Mass   = applyFluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dt)
@@ -429,7 +440,7 @@ def main():
     
     # check div B
     divB = getDiv(bx,by,dx)
-    print("t = ", t, "alpha=", np.min(alpha), ", mean |divB| = ", np.mean(np.abs(divB)))
+    print("t = ", t, "max_cf=", max_cf, "u_max=", u_max, "alpha=", np.min(alpha), ", mean |divB| = ", np.mean(np.abs(divB)))
     
     # plot in real time
     if (plotRealTime and plotThisTurn) or (t >= tEnd):
@@ -449,7 +460,7 @@ def main():
   print("done!")
   
   # Save figure
-  plt.savefig('P_B_'+str(max_cf)+'.png',dpi=240)
+  plt.savefig('P_B_'+str(cf_limit)+'.png',dpi=240)
   #plt.show()
 
   # Plot and save the timestep history
@@ -458,13 +469,13 @@ def main():
   plt.ylabel('dt')
   plt.xlim(0, tEnd)
   plt.ylim(0.001, 0.0014)
-  plt.savefig('dt_'+str(max_cf)+'.png',dpi=240)
+  plt.savefig('dt_'+str(cf_limit)+'.png',dpi=240)
 
   P_B = np.sqrt(bx**2+by**2)
   # Save rho, P_B, and dt_sav
-  np.save('data_rho_'+str(max_cf)+'.npy', rho.T)
-  np.save('data_P_B_'+str(max_cf)+'.npy', P_B.T)
-  np.save('data_dt_'+str(max_cf)+'.npy', dt_sav)
+  np.save('data_rho_'+str(cf_limit)+'.npy', rho.T)
+  np.save('data_P_B_'+str(cf_limit)+'.npy', P_B.T)
+  np.save('data_dt_'+str(cf_limit)+'.npy', dt_sav)
 
       
   return 0

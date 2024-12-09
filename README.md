@@ -6,6 +6,7 @@ Philip Mocz (2024), [@PMocz](https://twitter.com/PMocz)
 Based on 
 [📝 Read the Algorithm Write-up on Medium](https://levelup.gitconnected.com/create-your-own-constrained-transport-magnetohydrodynamics-simulation-with-python-276f787f537d)
 
+See also: https://arxiv.org/abs/1902.02810
 
 Simulate the Orszag-Tang vortex MHD problem
 with the Boris Integrator
@@ -20,8 +21,6 @@ python mhd-boris.py 1.4
 python mhd-boris.py 1.2
 python mhd-boris.py 1.0
 python mhd-boris.py 0.8
-python mhd-boris.py 0.6
-python mhd-boris.py 0.4
 python analysis.py
 ```
 
