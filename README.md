@@ -47,5 +47,5 @@ Alfven Speed:
 
 Fast Speed:
 
-![Analysis6](./analysis_caf.png)
+![Analysis6](./analysis_cf.png)
 
