@@ -343,15 +343,25 @@ def main():
   xlin_node = np.linspace(dx, boxsize, N)
   Yn, Xn = np.meshgrid( xlin_node, xlin_node )
   
-  # Generate Initial Conditions
-  rho = (gamma**2/(4*np.pi)) * np.ones(X.shape)
-  vx = -np.sin(2*np.pi*Y)
-  vy =  np.sin(2*np.pi*X)
-  P = (gamma/(4*np.pi)) * np.ones(X.shape)  # init. gas pressure 
-  
-  # magnetic field IC
-  # (Az is at top-right node of each cell)
-  Az = np.cos(4*np.pi*X)/(4*np.pi*np.sqrt(4*np.pi)) + np.cos(2*np.pi*Y)/(2*np.pi*np.sqrt(4*np.pi))
+  # Generate Initial Conditions:
+  if prob_id == 1:
+    # Orszag-Tang vortex problem
+    rho = (gamma**2/(4*np.pi)) * np.ones(X.shape)
+    vx = -np.sin(2*np.pi*Y)
+    vy =  np.sin(2*np.pi*X)
+    P = (gamma/(4*np.pi)) * np.ones(X.shape)  # init. gas pressure 
+    # (Az is at top-right node of each cell)
+    Az = np.cos(4*np.pi*X)/(4*np.pi*np.sqrt(4*np.pi)) + np.cos(2*np.pi*Y)/(2*np.pi*np.sqrt(4*np.pi))
+    bx, by = getCurl(Az, dx)
+  elif prob_id == 2:
+    # Circularly polarized Alfven wave
+    rho = np.ones(X.shape)
+
+    # XXX
+  else:
+    print("Problem ID not recognized")
+    return
+
   bx, by = getCurl(Az, dx)
   Bx, By = getBavg(bx, by)
   
