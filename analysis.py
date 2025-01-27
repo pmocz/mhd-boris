@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 def main():
 
+  prob_id = 1
   cf_limits = [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
 
   rho = {}
@@ -17,13 +18,14 @@ def main():
   dt = {}
 
   # Load the data (rho, P_B, dt)
+  prefix = 'p'+str(prob_id)+'_'
   for cf_limit in cf_limits:
-    rho[cf_limit] = np.load('data_rho_'+str(cf_limit)+'.npy')
-    P_B[cf_limit] = np.load('data_P_B_'+str(cf_limit)+'.npy')
-    v[cf_limit] = np.load('data_v_'+str(cf_limit)+'.npy')
-    ca[cf_limit] = np.load('data_ca_'+str(cf_limit)+'.npy')
-    cf[cf_limit] = np.load('data_cf_'+str(cf_limit)+'.npy')
-    dt[cf_limit] = np.load('data_dt_'+str(cf_limit)+'.npy')
+    rho[cf_limit] = np.load('output/'+prefix+'data_rho_'+str(cf_limit)+'.npy')
+    P_B[cf_limit] = np.load('output/'+prefix+'data_P_B_'+str(cf_limit)+'.npy')
+    v[cf_limit] = np.load('output/'+prefix+'data_v_'+str(cf_limit)+'.npy')
+    ca[cf_limit] = np.load('output/'+prefix+'data_ca_'+str(cf_limit)+'.npy')
+    cf[cf_limit] = np.load('output/'+prefix+'data_cf_'+str(cf_limit)+'.npy')
+    dt[cf_limit] = np.load('output/'+prefix+'data_dt_'+str(cf_limit)+'.npy')
 
   # stack the rho next to each other and plot it as an image
   rho_all = np.hstack([rho[cf_limit] for cf_limit in cf_limits])
@@ -36,35 +38,35 @@ def main():
   plt.imshow(rho_all, aspect=1, cmap='jet')
   plt.colorbar()
   plt.xlabel('cf_max = '+str(cf_limits))
-  plt.savefig('analysis_rho.png')
+  plt.savefig(prefix+'rho.png')
   plt.show()
 
   plt.figure(figsize=(12, 4))
   plt.imshow(P_B_all, aspect=1, cmap='jet')
   plt.colorbar()
   plt.xlabel('cf_max = '+str(cf_limits))
-  plt.savefig('analysis_P_B.png')
+  plt.savefig(prefix+'P_B.png')
   plt.show()
 
   plt.figure(figsize=(12, 4))
   plt.imshow(v_all, aspect=1, cmap='jet')
   plt.colorbar()
   plt.xlabel('cf_max = '+str(cf_limits))
-  plt.savefig('analysis_v.png')
+  plt.savefig(prefix+'v.png')
   plt.show()
 
   plt.figure(figsize=(12, 4))
   plt.imshow(ca_all, aspect=1, cmap='jet')
   plt.colorbar()
   plt.xlabel('cf_max = '+str(cf_limits))
-  plt.savefig('analysis_ca.png')
+  plt.savefig(prefix+'ca.png')
   plt.show()
 
   plt.figure(figsize=(12, 4))
   plt.imshow(cf_all, aspect=1, cmap='jet')
   plt.colorbar()
   plt.xlabel('cf_max = '+str(cf_limits))
-  plt.savefig('analysis_cf.png')
+  plt.savefig(prefix+'cf.png')
   plt.show()
 
   # plot the dt for each cf_limit
@@ -73,7 +75,7 @@ def main():
     plt.plot(np.cumsum(dt[cf_limit]), dt[cf_limit], label='cf_max = '+str(cf_limit))
   plt.legend(loc='lower left')
   plt.xlabel('t')
-  plt.savefig('analysis_dt.png')
+  plt.savefig(prefix+'dt.png')
   plt.show()
 
 

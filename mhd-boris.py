@@ -315,13 +315,14 @@ def main():
   """ Finite Volume simulation """
   
   # Check for command line arguments
-  if len(sys.argv) != 2:
-    print("Usage: python mhd-boris.py <cf_limit>")
+  if len(sys.argv) != 3:
+    print("Usage: python mhd-boris.py <problem_id> <cf_limit>")
     return
   
   # Parse command line argument
   # for the boris integrator (try 1.0, 1.5, 2.0)
-  cf_limit = float(sys.argv[1])
+  prob_id = int(sys.argv[1])
+  cf_limit = float(sys.argv[2])
 
   # Simulation parameters
   N                      = 128 # resolution
@@ -459,18 +460,12 @@ def main():
       outputCount += 1
       
   print("done!")
+
+  prefix = 'output/p' + str(prob_id) + '_'
   
   # Save figure
-  plt.savefig('P_B_'+str(cf_limit)+'.png',dpi=240)
+  plt.savefig(prefix + 'P_B_'+str(cf_limit)+'.png',dpi=240)
   #plt.show()
-
-  # Plot and save the timestep history
-  plt.plot(np.cumsum(dt_sav),dt_sav)
-  plt.xlabel('time')
-  plt.ylabel('dt')
-  plt.xlim(0, tEnd)
-  plt.ylim(0.001, 0.0014)
-  plt.savefig('dt_'+str(cf_limit)+'.png',dpi=240)
 
   # Save rho, P_B, v, vA, cf, and dt_sav
   Bx, By = getBavg(bx, by)
@@ -480,16 +475,15 @@ def main():
   c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2))/rho )
   ca = np.sqrt( (Bx**2+By**2)/rho )
   cf = np.sqrt( c0**2+ca**2 )
-  np.save('data_rho_'+str(cf_limit)+'.npy', rho.T)
-  np.save('data_P_B_'+str(cf_limit)+'.npy', P_B.T)
-  np.save('data_v_'+str(cf_limit)+'.npy', v.T)
-  np.save('data_ca_'+str(cf_limit)+'.npy', ca.T)
-  np.save('data_cf_'+str(cf_limit)+'.npy', cf.T)
-  np.save('data_dt_'+str(cf_limit)+'.npy', dt_sav)
+  np.save(prefix + 'data_rho_'+str(cf_limit)+'.npy', rho.T)
+  np.save(prefix + 'data_P_B_'+str(cf_limit)+'.npy', P_B.T)
+  np.save(prefix + 'data_v_'+str(cf_limit)+'.npy', v.T)
+  np.save(prefix + 'data_ca_'+str(cf_limit)+'.npy', ca.T)
+  np.save(prefix + 'data_cf_'+str(cf_limit)+'.npy', cf.T)
+  np.save(prefix + 'data_dt_'+str(cf_limit)+'.npy', dt_sav)
 
       
-  return 0
-
+  return
 
 
 if __name__== "__main__":

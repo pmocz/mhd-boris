@@ -14,38 +14,45 @@ with the Boris Integrator
 Run the simulations and produce analysis with:
 
 ```bash
-python mhd-boris.py 2.0
-python mhd-boris.py 1.8
-python mhd-boris.py 1.6
-python mhd-boris.py 1.4
-python mhd-boris.py 1.2
-python mhd-boris.py 1.0
-python mhd-boris.py 0.8
+python mhd-boris.py 1 2.0
+python mhd-boris.py 1 1.8
+python mhd-boris.py 1 1.6
+python mhd-boris.py 1 1.4
+python mhd-boris.py 1 1.2
+python mhd-boris.py 1 1.0
+python mhd-boris.py 1 0.8
 python analysis.py
 ```
 
+
+## Orszag-Tang
+
 Timesteps:
 
-![Analysis1](./analysis_dt.png)
+![Analysis1](./p1_dt.png)
 
 
 Density:
 
-![Analysis2](./analysis_rho.png)
+![Analysis2](./p1_rho.png)
 
 Magnetic Pressure:
 
-![Analysis3](./analysis_P_B.png)
+![Analysis3](./p1_P_B.png)
 
 Velocity:
 
-![Analysis4](./analysis_v.png)
+![Analysis4](./p1_v.png)
 
 Alfven Speed: 
 
-![Analysis5](./analysis_ca.png)
+![Analysis5](./p1_ca.png)
 
 Fast Speed:
 
-![Analysis6](./analysis_cf.png)
+![Analysis6](./p1_cf.png)
+
+
+## Alfven Wave
+
 
