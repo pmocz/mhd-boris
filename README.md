@@ -13,7 +13,7 @@ with the Boris Integrator
 
 Run the simulations and produce analysis with:
 
-```python
+```bash
 python mhd-boris.py 2.0
 python mhd-boris.py 1.8
 python mhd-boris.py 1.6
