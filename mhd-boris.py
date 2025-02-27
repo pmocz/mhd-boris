@@ -16,6 +16,16 @@ The original problem has cf_max ~ 1.9, u_max ~ 1.6
 R = -1  # right/up
 L = 1  # left/down
 
+# Simulation parameters
+N = 128  # resolution
+boxsize = 1.0
+gamma = 5.0 / 3.0  # ideal gas gamma
+courant_fac = 0.4
+t_end = 0.5
+t_out = 0.01  # draw frequency
+use_slope_limiting = True
+plot_in_real_time = True
+
 
 def get_curl(Az, dx):
     """
@@ -215,6 +225,14 @@ def extrapolate_in_space_to_face(f, f_dx, f_dy, dx):
     return f_XL, f_XR, f_YL, f_YR
 
 
+def dudt_fluxes(flux_X, flux_Y, dx):
+    F = -dx * flux_X
+    F += dx * np.roll(flux_X, L, axis=0)
+    F += -dx * flux_Y
+    F += dx * np.roll(flux_Y, L, axis=1)
+    return F
+
+
 def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
     """
     Apply fluxes to conserved variables
@@ -232,6 +250,18 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
     F += dt * dx * np.roll(flux_F_Y, L, axis=1)
 
     return F
+
+
+def dudt_stokes(flux_By_X, flux_Bx_Y, dx):
+    Ez = 0.25 * (
+        -flux_By_X
+        - np.roll(flux_By_X, R, axis=1)
+        + flux_Bx_Y
+        + np.roll(flux_Bx_Y, R, axis=0)
+    )
+    dbx, dby = get_curl(-Ez, dx)
+
+    return dbx, dby
 
 
 def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
@@ -259,6 +289,10 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
     by += dt * dby
 
     return bx, by
+
+
+def apply_dudt(F, dudt, dt):
+    return F + dt * dudt
 
 
 def get_flux(
@@ -381,6 +415,119 @@ def get_flux(
     return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
 
 
+def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
+    """single stage of a runge-kutta method to return dudt of all these variables"""
+    Bx, By = get_B_avg(bx, by)
+
+    rho_dx, rho_dy = get_gradient(rho, dx)
+    vx_dx, vx_dy = get_gradient(vx, dx)
+    vy_dx, vy_dy = get_gradient(vy, dx)
+    vz_dx, vz_dy = get_gradient(vz, dx)
+    P_dx, P_dy = get_gradient(P, dx)
+    Bx_dx, Bx_dy = get_gradient(Bx, dx)
+    By_dx, By_dy = get_gradient(By, dx)
+    Bz_dx, Bz_dy = get_gradient(Bz, dx)
+
+    # slope limit gradients
+    if use_slope_limiting:
+        rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
+        vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
+        vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
+        vz_dx, vz_dy = slope_limit(vz, dx, vz_dx, vz_dy)
+        P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
+        Bx_dx, Bx_dy = slope_limit(Bx, dx, Bx_dx, Bx_dy)
+        By_dx, By_dy = slope_limit(By, dx, By_dx, By_dy)
+        Bz_dx, Bz_dy = slope_limit(Bz, dx, Bz_dx, Bz_dy)
+
+    # extrapolate in space to face centers
+    rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_in_space_to_face(
+        rho, rho_dx, rho_dy, dx
+    )
+    vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_in_space_to_face(vx, vx_dx, vx_dy, dx)
+    vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_in_space_to_face(vy, vy_dx, vy_dy, dx)
+    vz_XL, vz_XR, vz_YL, vz_YR = extrapolate_in_space_to_face(vz, vz_dx, vz_dy, dx)
+    P_XL, P_XR, P_YL, P_YR = extrapolate_in_space_to_face(P, P_dx, P_dy, dx)
+    Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_in_space_to_face(Bx, Bx_dx, Bx_dy, dx)
+    By_XL, By_XR, By_YL, By_YR = extrapolate_in_space_to_face(By, By_dx, By_dy, dx)
+    Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolate_in_space_to_face(Bz, Bz_dx, Bz_dy, dx)
+
+    # compute fluxes (local Lax-Friedrichs/Rusanov)
+    (
+        flux_Mass_X,
+        flux_Momx_X,
+        flux_Momy_X,
+        flux_Momz_X,
+        flux_Energy_X,
+        flux_By_X,
+        flux_Bz_X,
+    ) = get_flux(
+        rho_XL,
+        rho_XR,
+        vx_XL,
+        vx_XR,
+        vy_XL,
+        vy_XR,
+        vz_XR,
+        vz_XL,
+        P_XL,
+        P_XR,
+        Bx_XL,
+        Bx_XR,
+        By_XL,
+        By_XR,
+        Bz_XL,
+        Bz_XR,
+        gamma,
+        cf_limit,
+    )
+    (
+        flux_Mass_Y,
+        flux_Momy_Y,
+        flux_Momx_Y,
+        flux_Momz_Y,
+        flux_Energy_Y,
+        flux_Bx_Y,
+        flux_Bz_Y,
+    ) = get_flux(
+        rho_YL,
+        rho_YR,
+        vy_YL,
+        vy_YR,
+        vx_YL,
+        vx_YR,
+        vz_YL,
+        vz_YR,
+        P_YL,
+        P_YR,
+        By_YL,
+        By_YR,
+        Bx_YL,
+        Bx_YR,
+        Bz_YL,
+        Bz_YR,
+        gamma,
+        cf_limit,
+    )
+    dudt_Mass = dudt_fluxes(flux_Mass_X, flux_Mass_Y, dx)
+    dudt_Momx = dudt_fluxes(flux_Momx_X, flux_Momx_Y, dx)
+    dudt_Momy = dudt_fluxes(flux_Momy_X, flux_Momy_Y, dx)
+    dudt_Momz = dudt_fluxes(flux_Momz_X, flux_Momz_Y, dx)
+    dudt_Energy = dudt_fluxes(flux_Energy_X, flux_Energy_Y, dx)
+    dudt_Bz = dudt_fluxes(flux_Bz_X, flux_Bz_Y, dx)
+    dudt_bx, dudt_by = dudt_stokes(flux_By_X, flux_Bx_Y, dx)
+
+    return (
+        dudt_Mass,
+        dudt_Momx,
+        dudt_Momy,
+        dudt_Momz,
+        dudt_Energy,
+        dudt_Bz,
+        dudt_bx,
+        dudt_by,
+    )
+
+
 def main():
     """Finite Volume simulation"""
 
@@ -394,16 +541,16 @@ def main():
     prob_id = int(sys.argv[1])
     cf_limit = float(sys.argv[2])
 
-    # Simulation parameters
-    N = 128  # resolution
-    boxsize = 1.0
-    gamma = 5.0 / 3.0  # ideal gas gamma
-    courant_fac = 0.4
     t = 0.0
-    t_end = 0.5
-    t_out = 0.01  # draw frequency
-    use_slope_limiting = True
-    plot_in_real_time = True
+    global \
+        N, \
+        boxsize, \
+        gamma, \
+        courant_fac, \
+        t_end, \
+        t_out, \
+        use_slope_limiting, \
+        plot_in_real_time
 
     # Mesh
     dx = boxsize / N
@@ -519,167 +666,62 @@ def main():
             # dt = outputCount*t_out - t
             plotThisTurn = True
 
-        # calculate gradients
-        rho_dx, rho_dy = get_gradient(rho, dx)
-        vx_dx, vx_dy = get_gradient(vx, dx)
-        vy_dx, vy_dy = get_gradient(vy, dx)
-        vz_dx, vz_dy = get_gradient(vz, dx)
-        P_dx, P_dy = get_gradient(P, dx)
-        Bx_dx, Bx_dy = get_gradient(Bx, dx)
-        By_dx, By_dy = get_gradient(By, dx)
-        Bz_dx, Bz_dy = get_gradient(Bz, dx)
-
-        # slope limit gradients
-        if use_slope_limiting:
-            rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
-            vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
-            vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
-            vz_dx, vz_dy = slope_limit(vz, dx, vz_dx, vz_dy)
-            P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
-            Bx_dx, Bx_dy = slope_limit(Bx, dx, Bx_dx, Bx_dy)
-            By_dx, By_dy = slope_limit(By, dx, By_dx, By_dy)
-            Bz_dx, Bz_dy = slope_limit(Bz, dx, Bz_dx, Bz_dy)
-
-        # extrapolate rho half-step in time
-        rho_prime = rho - 0.5 * dt * (
-            vx * rho_dx + rho * vx_dx + vy * rho_dy + rho * vy_dy
-        )
-        # extrapolate velocity half-step in time
-        vx_prime = vx - 0.5 * dt * (
-            vx * vx_dx
-            + vy * vx_dy
-            + (1.0 / rho) * P_dx
-            - (Bx / rho) * (2.0 * Bx_dx + By_dy)
-            - (By / rho) * Bx_dy
-        )
-        vy_prime = vy - 0.5 * dt * (
-            vx * vy_dx
-            + vy * vy_dy
-            + (1.0 / rho) * P_dy
-            - (Bx / rho) * By_dx
-            - (By / rho) * (Bx_dx + 2.0 * By_dy)
-        )
-        vz_prime = vz - 0.5 * dt * (
-            vx * vz_dx + vy * vz_dy - (Bx / rho) * Bz_dx - (By / rho) * Bz_dy
-        )
-        # extrapolate pressure half-step in time
-        P_prime = P - 0.5 * dt * (
-            (gamma * (P - 0.5 * (Bx**2 + By**2 + Bz**2)) + By**2 + Bz**2) * vx_dx
-            - Bx * By * vy_dx
-            - Bx * Bz * vz_dx
-            + vx * P_dx
-            + (gamma - 2.0) * (Bx * vx + By * vy + Bz * vz) * Bx_dx
-            - By * Bx * vx_dy
-            + (gamma * (P - 0.5 * (Bx**2 + By**2 + Bz**2)) + Bx**2 + Bz**2) * vy_dy
-            - By * Bz * vz_dy
-            + vy * P_dy
-            + (gamma - 2.0) * (Bx * vx + By * vy + Bz * vz) * By_dy
-        )
-
-        # extrapolate magnetic field half-step in time
-        Bx_prime = Bx - 0.5 * dt * (Bx * vy_dy - By * vx_dy - vx * By_dy + vy * Bx_dy)
-        By_prime = By - 0.5 * dt * (-Bx * vy_dx + By * vx_dx + vx * By_dx - vy * Bx_dx)
-        Bz_prime = Bz - 0.5 * dt * (
-            -Bx * vz_dx
-            - By * vz_dy
-            + Bz * vx_dx
-            + Bz * vy_dy
-            + vx * Bz_dx
-            + vy * Bz_dy
-            - vz * Bx_dx
-            - vz * By_dy
-        )
-
-        # extrapolate in space to face centers
-        rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_in_space_to_face(
-            rho_prime, rho_dx, rho_dy, dx
-        )
-        vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_in_space_to_face(
-            vx_prime, vx_dx, vx_dy, dx
-        )
-        vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_in_space_to_face(
-            vy_prime, vy_dx, vy_dy, dx
-        )
-        vz_XL, vz_XR, vz_YL, vz_YR = extrapolate_in_space_to_face(
-            vz_prime, vz_dx, vz_dy, dx
-        )
-        P_XL, P_XR, P_YL, P_YR = extrapolate_in_space_to_face(P_prime, P_dx, P_dy, dx)
-        Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_in_space_to_face(
-            Bx_prime, Bx_dx, Bx_dy, dx
-        )
-        By_XL, By_XR, By_YL, By_YR = extrapolate_in_space_to_face(
-            By_prime, By_dx, By_dy, dx
-        )
-        Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolate_in_space_to_face(
-            Bz_prime, Bz_dx, Bz_dy, dx
-        )
-
-        # compute fluxes (local Lax-Friedrichs/Rusanov)
+        # first RK stage
         (
-            flux_Mass_X,
-            flux_Momx_X,
-            flux_Momy_X,
-            flux_Momz_X,
-            flux_Energy_X,
-            flux_By_X,
-            flux_Bz_X,
-        ) = get_flux(
-            rho_XL,
-            rho_XR,
-            vx_XL,
-            vx_XR,
-            vy_XL,
-            vy_XR,
-            vz_XR,
-            vz_XL,
-            P_XL,
-            P_XR,
-            Bx_XL,
-            Bx_XR,
-            By_XL,
-            By_XR,
-            Bz_XL,
-            Bz_XR,
-            gamma,
-            cf_limit,
-        )
-        (
-            flux_Mass_Y,
-            flux_Momy_Y,
-            flux_Momx_Y,
-            flux_Momz_Y,
-            flux_Energy_Y,
-            flux_Bx_Y,
-            flux_Bz_Y,
-        ) = get_flux(
-            rho_YL,
-            rho_YR,
-            vy_YL,
-            vy_YR,
-            vx_YL,
-            vx_YR,
-            vz_YL,
-            vz_YR,
-            P_YL,
-            P_YR,
-            By_YL,
-            By_YR,
-            Bx_YL,
-            Bx_YR,
-            Bz_YL,
-            Bz_YR,
-            gamma,
-            cf_limit,
-        )
+            dudt_Mass,
+            dudt_Momx,
+            dudt_Momy,
+            dudt_Momz,
+            dudt_Energy,
+            dudt_Bz,
+            dudt_bx,
+            dudt_by,
+        ) = get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dx, gamma, cf_limit)
 
         # update solution
-        Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dt)
-        Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dt)
-        Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
-        Momz = apply_fluxes(Momz, flux_Momz_X, flux_Momz_Y, dx, dt)
-        Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
-        Bz = apply_fluxes(Bz, flux_Bz_X, flux_Bz_Y, dx / vol, dt)
-        bx, by = constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt)
+        Mass_1 = apply_dudt(Mass, dudt_Mass, dt)
+        Momx_1 = apply_dudt(Momx, dudt_Momx, dt)
+        Momy_1 = apply_dudt(Momy, dudt_Momy, dt)
+        Momz_1 = apply_dudt(Momz, dudt_Momz, dt)
+        Energy_1 = apply_dudt(Energy, dudt_Energy, dt)
+        Bz_1 = apply_dudt(Bz, dudt_Bz, dt)
+        bx_1 = apply_dudt(bx, dudt_bx, dt)
+        by_1 = apply_dudt(by, dudt_by, dt)
+
+        # start accumulating the n+1 result u^n+1 = [u^n + dt/2 L(u^n)] + dt/2 L(u^1)
+        Mass = apply_dudt(Mass, dudt_Mass, 0.5 * dt)
+        Momx = apply_dudt(Momx, dudt_Momx, 0.5 * dt)
+        Momy = apply_dudt(Momy, dudt_Momy, 0.5 * dt)
+        Momz = apply_dudt(Momz, dudt_Momz, 0.5 * dt)
+        Energy = apply_dudt(Energy, dudt_Energy, 0.5 * dt)
+        Bz = apply_dudt(Bz, dudt_Bz, 0.5 * dt)
+        bx = apply_dudt(bx, dudt_bx, 0.5 * dt)
+        by = apply_dudt(by, dudt_by, 0.5 * dt)
+
+        # second stage
+        Bx, By = get_B_avg(bx, by)
+        rho, vx, vy, vz, P = get_primitive(
+            Mass_1, Momx_1, Momy_1, Momz_1, Energy_1, Bx, By, Bz_1, gamma, vol, cf_limit
+        )
+        (
+            dudt_Mass,
+            dudt_Momx,
+            dudt_Momy,
+            dudt_Momz,
+            dudt_Energy,
+            dudt_Bz,
+            dudt_bx,
+            dudt_by,
+        ) = get_dudt(rho, vx, vy, vz, P, bx_1, by_1, Bz, dx, dx, gamma, cf_limit)
+
+        Mass = apply_dudt(Mass, dudt_Mass, 0.5 * dt)
+        Momx = apply_dudt(Momx, dudt_Momx, 0.5 * dt)
+        Momy = apply_dudt(Momy, dudt_Momy, 0.5 * dt)
+        Momz = apply_dudt(Momz, dudt_Momz, 0.5 * dt)
+        Energy = apply_dudt(Energy, dudt_Energy, 0.5 * dt)
+        Bz = apply_dudt(Bz, dudt_Bz, 0.5 * dt)
+        bx = apply_dudt(bx, dudt_bx, 0.5 * dt)
+        by = apply_dudt(by, dudt_by, 0.5 * dt)
 
         # update time
         t += dt
