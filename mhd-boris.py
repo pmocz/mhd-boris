@@ -113,7 +113,7 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_lim
         Energy / vol
         - 0.5 * rho * (vx**2 + vy**2 + vz**2)
         - 0.5 * (Bx**2 + By**2 + Bz**2)
-    ) * (gamma - 1) + 0.5 * (Bx**2 + By**2 + Bz**2)
+    ) * (gamma - 1.0) + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     # Try 2: apply boris factor in recovering the velocity
     # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
@@ -304,12 +304,12 @@ def get_flux(
 
     # left and right energies
     en_L = (
-        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1)
+        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1.0)
         + 0.5 * rho_L * (vx_L**2 + vy_L**2 + vz_L**2)
         + 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
     )
     en_R = (
-        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1)
+        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1.0)
         + 0.5 * rho_R * (vx_R**2 + vy_R**2 + vz_R**2)
         + 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
     )
@@ -324,7 +324,7 @@ def get_flux(
     By_star = 0.5 * (By_L + By_R)
     Bz_star = 0.5 * (Bz_L + Bz_R)
 
-    P_star = (gamma - 1) * (
+    P_star = (gamma - 1.0) * (
         en_star
         - 0.5 * (momx_star**2 + momy_star**2 + momz_star**2) / rho_star
         - 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
@@ -370,13 +370,13 @@ def get_flux(
     C = np.maximum(C_L, C_R)
 
     # add stabilizing diffusive term
-    flux_Mass -= C * 0.5 * (rho_L - rho_R)
-    flux_Momx -= C * 0.5 * (rho_L * vx_L - rho_R * vx_R)
-    flux_Momy -= C * 0.5 * (rho_L * vy_L - rho_R * vy_R)
-    flux_Momz -= C * 0.5 * (rho_L * vz_L - rho_R * vz_R)
-    flux_Energy -= C * 0.5 * (en_L - en_R)
-    flux_By -= C * 0.5 * (By_L - By_R)
-    flux_Bz -= C * 0.5 * (Bz_L - Bz_R)
+    flux_Mass -= C * 0.5 * (rho_R - rho_L)
+    flux_Momx -= C * 0.5 * (rho_R * vx_R - rho_L * vx_L)
+    flux_Momy -= C * 0.5 * (rho_R * vy_R - rho_L * vy_L)
+    flux_Momz -= C * 0.5 * (rho_R * vz_R - rho_L * vz_L)
+    flux_Energy -= C * 0.5 * (en_R - en_L)
+    flux_By -= C * 0.5 * (By_R - By_L)
+    flux_Bz -= C * 0.5 * (Bz_R - Bz_L)
 
     return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
 
@@ -624,22 +624,22 @@ def main():
             flux_By_X,
             flux_Bz_X,
         ) = get_flux(
-            rho_XL,
             rho_XR,
-            vx_XL,
+            rho_XL,
             vx_XR,
-            vy_XL,
+            vx_XL,
             vy_XR,
+            vy_XL,
             vz_XR,
             vz_XL,
-            P_XL,
             P_XR,
-            Bx_XL,
+            P_XL,
             Bx_XR,
-            By_XL,
+            Bx_XL,
             By_XR,
-            Bz_XL,
+            By_XL,
             Bz_XR,
+            Bz_XL,
             gamma,
             cf_limit,
         )
@@ -652,22 +652,22 @@ def main():
             flux_Bx_Y,
             flux_Bz_Y,
         ) = get_flux(
-            rho_YL,
             rho_YR,
-            vy_YL,
+            rho_YL,
             vy_YR,
-            vx_YL,
+            vy_YL,
             vx_YR,
-            vz_YL,
+            vx_YL,
             vz_YR,
-            P_YL,
+            vz_YL,
             P_YR,
-            By_YL,
+            P_YL,
             By_YR,
-            Bx_YL,
+            By_YL,
             Bx_YR,
-            Bz_YL,
+            Bx_YL,
             Bz_YR,
+            Bz_YL,
             gamma,
             cf_limit,
         )
