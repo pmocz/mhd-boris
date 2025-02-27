@@ -12,11 +12,7 @@ with a Boris-like Integrator to control timesteps!
 The original problem has cf_max ~ 1.9, u_max ~ 1.6
 """
 
-# directions for np.roll()
-R = -1  # right/up
-L = 1  # left/down
-
-# Simulation parameters
+# Simulation parameters (global)
 N = 128  # resolution
 boxsize = 1.0
 gamma = 5.0 / 3.0  # ideal gas gamma
@@ -28,6 +24,11 @@ plot_in_real_time = True
 riemann_solver = "llf"
 
 
+# directions for np.roll()
+#  -1    right/up
+#   1    left/down
+
+
 def get_curl(Az, dx):
     """
     Calculate the discrete curl
@@ -37,8 +38,8 @@ def get_curl(Az, dx):
     by       is matrix of cell face y-component magnetic-field
     """
 
-    bx = (Az - np.roll(Az, L, axis=1)) / dx  # = d Az / d y
-    by = -(Az - np.roll(Az, L, axis=0)) / dx  # =-d Az / d x
+    bx = (Az - np.roll(Az, 1, axis=1)) / dx  # = d Az / d y
+    by = -(Az - np.roll(Az, 1, axis=0)) / dx  # =-d Az / d x
 
     return bx, by
 
@@ -51,7 +52,7 @@ def get_div(bx, by, dx):
     by       is matrix of cell face y-component magnetic-field
     """
 
-    divB = (bx - np.roll(bx, L, axis=0) + by - np.roll(by, L, axis=1)) / dx
+    divB = (bx - np.roll(bx, 1, axis=0) + by - np.roll(by, 1, axis=1)) / dx
 
     return divB
 
@@ -65,8 +66,8 @@ def get_B_avg(bx, by):
     By       is matrix of cell By
     """
 
-    Bx = 0.5 * (bx + np.roll(bx, L, axis=0))
-    By = 0.5 * (by + np.roll(by, L, axis=1))
+    Bx = 0.5 * (bx + np.roll(bx, 1, axis=0))
+    By = 0.5 * (by + np.roll(by, 1, axis=1))
 
     return Bx, By
 
@@ -147,8 +148,8 @@ def get_gradient(f, dx):
     f_dy     is a matrix of derivative of f in the y-direction
     """
 
-    f_dx = (np.roll(f, R, axis=0) - np.roll(f, L, axis=0)) / (2.0 * dx)
-    f_dy = (np.roll(f, R, axis=1) - np.roll(f, L, axis=1)) / (2.0 * dx)
+    f_dx = (np.roll(f, -1, axis=0) - np.roll(f, 1, axis=0)) / (2.0 * dx)
+    f_dy = (np.roll(f, -1, axis=1) - np.roll(f, 1, axis=1)) / (2.0 * dx)
 
     return f_dx, f_dy
 
@@ -166,7 +167,7 @@ def slope_limit(f, dx, f_dx, f_dy):
         np.maximum(
             0.0,
             np.minimum(
-                1.0, ((f - np.roll(f, L, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0))
+                1.0, ((f - np.roll(f, 1, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0))
             ),
         )
         * f_dx
@@ -175,7 +176,8 @@ def slope_limit(f, dx, f_dx, f_dy):
         np.maximum(
             0.0,
             np.minimum(
-                1.0, (-(f - np.roll(f, R, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0))
+                1.0,
+                (-(f - np.roll(f, -1, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0)),
             ),
         )
         * f_dx
@@ -184,7 +186,7 @@ def slope_limit(f, dx, f_dx, f_dy):
         np.maximum(
             0.0,
             np.minimum(
-                1.0, ((f - np.roll(f, L, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0))
+                1.0, ((f - np.roll(f, 1, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0))
             ),
         )
         * f_dy
@@ -193,7 +195,8 @@ def slope_limit(f, dx, f_dx, f_dy):
         np.maximum(
             0.0,
             np.minimum(
-                1.0, (-(f - np.roll(f, R, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0))
+                1.0,
+                (-(f - np.roll(f, -1, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0)),
             ),
         )
         * f_dy
@@ -216,11 +219,11 @@ def extrapolate_in_space_to_face(f, f_dx, f_dy, dx):
     """
 
     f_XL = f - f_dx * dx / 2.0
-    f_XL = np.roll(f_XL, R, axis=0)
+    f_XL = np.roll(f_XL, -1, axis=0)
     f_XR = f + f_dx * dx / 2.0
 
     f_YL = f - f_dy * dx / 2.0
-    f_YL = np.roll(f_YL, R, axis=1)
+    f_YL = np.roll(f_YL, -1, axis=1)
     f_YR = f + f_dy * dx / 2.0
 
     return f_XL, f_XR, f_YL, f_YR
@@ -228,9 +231,9 @@ def extrapolate_in_space_to_face(f, f_dx, f_dy, dx):
 
 def dudt_fluxes(flux_X, flux_Y, dx):
     F = -dx * flux_X
-    F += dx * np.roll(flux_X, L, axis=0)
+    F += dx * np.roll(flux_X, 1, axis=0)
     F += -dx * flux_Y
-    F += dx * np.roll(flux_Y, L, axis=1)
+    F += dx * np.roll(flux_Y, 1, axis=1)
     return F
 
 
@@ -246,9 +249,9 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
 
     # update solution
     F += -dt * dx * flux_F_X
-    F += dt * dx * np.roll(flux_F_X, L, axis=0)
+    F += dt * dx * np.roll(flux_F_X, 1, axis=0)
     F += -dt * dx * flux_F_Y
-    F += dt * dx * np.roll(flux_F_Y, L, axis=1)
+    F += dt * dx * np.roll(flux_F_Y, 1, axis=1)
 
     return F
 
@@ -256,9 +259,9 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
 def dudt_stokes(flux_By_X, flux_Bx_Y, dx):
     Ez = 0.25 * (
         -flux_By_X
-        - np.roll(flux_By_X, R, axis=1)
+        - np.roll(flux_By_X, -1, axis=1)
         + flux_Bx_Y
-        + np.roll(flux_Bx_Y, R, axis=0)
+        + np.roll(flux_Bx_Y, -1, axis=0)
     )
     dbx, dby = get_curl(-Ez, dx)
 
@@ -280,9 +283,9 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
     # Ez at top right node of cell = avg of 4 fluxes
     Ez = 0.25 * (
         -flux_By_X
-        - np.roll(flux_By_X, R, axis=1)
+        - np.roll(flux_By_X, -1, axis=1)
         + flux_Bx_Y
-        + np.roll(flux_Bx_Y, R, axis=0)
+        + np.roll(flux_Bx_Y, -1, axis=0)
     )
     dbx, dby = get_curl(-Ez, dx)
 
@@ -465,18 +468,18 @@ def get_flux_hlld(
         + ptst * spd3
         + Bxi * (vx_L * Bxi + vy_L * By_L + vz_L * Bz_L - vbstl)
     ) / sdml
-    WLst_d = ULst_d
-    WLst_vx = ULst_Mx / ULst_d
+    # WLst_d = ULst_d
+    # WLst_vx = ULst_Mx / ULst_d
     WLst_vy = ULst_My / ULst_d
     WLst_vz = ULst_Mz / ULst_d
-    WLst_Bx = ULst_Bx
-    WLst_By = ULst_By
-    WLst_Bz = ULst_Bz
-    WLst_P = (gamma - 1) * (
-        ULst_E
-        - 0.5 * WLst_d * (WLst_vx**2 + WLst_vy**2 + WLst_vz**2)
-        - 0.5 * (WLst_Bx**2 + WLst_By**2 + WLst_Bz**2)
-    )
+    # WLst_Bx = ULst_Bx
+    # WLst_By = ULst_By
+    # WLst_Bz = ULst_Bz
+    # WLst_P = (gamma - 1) * (
+    #    ULst_E
+    #    - 0.5 * WLst_d * (WLst_vx**2 + WLst_vy**2 + WLst_vz**2)
+    #    - 0.5 * (WLst_Bx**2 + WLst_By**2 + WLst_Bz**2)
+    # )
 
     # Ur*
     # eqn (39) of M&K
@@ -502,18 +505,18 @@ def get_flux_hlld(
         + ptst * spd3
         + Bxi * (vx_R * Bxi + vy_R * By_R + vz_R * Bz_R - vbstr)
     ) / sdmr
-    WRst_d = URst_d
-    WRst_vx = URst_Mx / URst_d
+    # WRst_d = URst_d
+    # WRst_vx = URst_Mx / URst_d
     WRst_vy = URst_My / URst_d
     WRst_vz = URst_Mz / URst_d
-    WRst_Bx = URst_Bx
-    WRst_By = URst_By
-    WRst_Bz = URst_Bz
-    WRst_P = (gamma - 1) * (
-        URst_E
-        - 0.5 * WRst_d * (WRst_vx**2 + WRst_vy**2 + WRst_vz**2)
-        - 0.5 * (WRst_Bx**2 + WRst_By**2 + WRst_Bz**2)
-    )
+    # WRst_Bx = URst_Bx
+    # WRst_By = URst_By
+    # WRst_Bz = URst_Bz
+    # WRst_P = (gamma - 1) * (
+    #    URst_E
+    #    - 0.5 * WRst_d * (WRst_vx**2 + WRst_vy**2 + WRst_vz**2)
+    #    - 0.5 * (WRst_Bx**2 + WRst_By**2 + WRst_Bz**2)
+    # )
 
     # Ul**  and Ur**  - if Bx is zero, same as  * -states
     #   if(Bxi == 0.0)
@@ -1104,6 +1107,7 @@ def main():
         cf = np.sqrt(c0**2 + ca**2)
         max_cf = np.max(cf)
         alpha = np.minimum(1.0, cf_limit / np.sqrt(c0**2 + ca**2))
+        # Try 1
         # cf *= alpha
         dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
         u_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
