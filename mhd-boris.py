@@ -450,7 +450,7 @@ def get_flux_hlld(
     # WLst_Bx = ULst_Bx
     # WLst_By = ULst_By
     # WLst_Bz = ULst_Bz
-    # WLst_P = (gamma - 1) * (
+    # WLst_P = (gamma - 1.0) * (
     #    ULst_E
     #    - 0.5 * WLst_d * (WLst_vx**2 + WLst_vy**2 + WLst_vz**2)
     #    - 0.5 * (WLst_Bx**2 + WLst_By**2 + WLst_Bz**2)

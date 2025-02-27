@@ -69,7 +69,7 @@ def get_conserved(rho, vx, vy, vz, P, bx, by, bz, gamma, vol):
     Momy = rho * vy * vol
     Momz = rho * vz * vol
     Energy = (
-        (P - 0.5 * (Bx**2 + By**2 + Bz**2)) / (gamma - 1)
+        (P - 0.5 * (Bx**2 + By**2 + Bz**2)) / (gamma - 1.0)
         + 0.5 * rho * (vx**2 + vy**2 + vz**2)
         + 0.5 * (Bx**2 + By**2 + Bz**2)
     ) * vol
@@ -91,7 +91,7 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol):
         Energy / vol
         - 0.5 * rho * (vx**2 + vy**2 + vz**2)
         - 0.5 * (Bx**2 + By**2 + Bz**2)
-    ) * (gamma - 1) + 0.5 * (Bx**2 + By**2 + Bz**2)
+    ) * (gamma - 1.0) + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     return rho, vx, vy, vz, P
 
@@ -174,17 +174,17 @@ def extrapolate_to_face(f, f_dx, f_dy, f_dz, dx):
     Extrapolate a cell-centered field to face-centered values
     """
 
-    f_XL = f - f_dx * dx / 2
+    f_XL = f - f_dx * dx / 2.0
     f_XL = jnp.roll(f_XL, -1, axis=0)
-    f_XR = f + f_dx * dx / 2
+    f_XR = f + f_dx * dx / 2.0
 
-    f_YL = f - f_dy * dx / 2
+    f_YL = f - f_dy * dx / 2.0
     f_YL = jnp.roll(f_YL, -1, axis=1)
-    f_YR = f + f_dy * dx / 2
+    f_YR = f + f_dy * dx / 2.0
 
-    f_ZL = f - f_dz * dx / 2
+    f_ZL = f - f_dz * dx / 2.0
     f_ZL = jnp.roll(f_ZL, -1, axis=2)
-    f_ZR = f + f_dz * dx / 2
+    f_ZR = f + f_dz * dx / 2.0
 
     return f_XL, f_XR, f_YL, f_YR, f_ZL, f_ZR
 
@@ -270,12 +270,12 @@ def get_flux(
 
     # left and right energies
     en_L = (
-        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1)
+        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1.0)
         + 0.5 * rho_L * (vx_L**2 + vy_L**2 + vz_L**2)
         + 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
     )
     en_R = (
-        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1)
+        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1.0)
         + 0.5 * rho_R * (vx_R**2 + vy_R**2 + vz_R**2)
         + 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
     )
@@ -289,7 +289,7 @@ def get_flux(
     Bx_star = 0.5 * (Bx_L + Bx_R)
     By_star = 0.5 * (By_L + By_R)
     Bz_star = 0.5 * (Bz_L + Bz_R)
-    P_star = (gamma - 1) * (
+    P_star = (gamma - 1.0) * (
         en_star
         - 0.5 * (momx_star**2 + momy_star**2 + momz_star**2) / rho_star
         - 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
@@ -322,13 +322,13 @@ def get_flux(
     C = jnp.maximum(C_L, C_R)
 
     # add stabilizing diffusive term
-    flux_Mass -= C * 0.5 * (rho_L - rho_R)
-    flux_Momx -= C * 0.5 * (rho_L * vx_L - rho_R * vx_R)
-    flux_Momy -= C * 0.5 * (rho_L * vy_L - rho_R * vy_R)
-    flux_Momz -= C * 0.5 * (rho_L * vz_L - rho_R * vz_R)
-    flux_Energy -= C * 0.5 * (en_L - en_R)
-    flux_By -= C * 0.5 * (By_L - By_R)
-    flux_Bz -= C * 0.5 * (Bz_L - Bz_R)
+    flux_Mass -= C * 0.5 * (rho_R - rho_L)
+    flux_Momx -= C * 0.5 * (rho_R * vx_R - rho_L * vx_L)
+    flux_Momy -= C * 0.5 * (rho_R * vy_R - rho_L * vy_L)
+    flux_Momz -= C * 0.5 * (rho_R * vz_R - rho_L * vz_L)
+    flux_Energy -= C * 0.5 * (en_R - en_L)
+    flux_By -= C * 0.5 * (By_R - By_L)
+    flux_Bz -= C * 0.5 * (Bz_R - Bz_L)
 
     # (note: flux_Bx = 0)
 
@@ -521,22 +521,22 @@ def update_sim(values):
         flux_By_X,
         flux_Bz_X,
     ) = get_flux(
-        rho_XL,
         rho_XR,
-        vx_XL,
+        rho_XL,
         vx_XR,
-        vy_XL,
+        vx_XL,
         vy_XR,
-        vz_XL,
+        vy_XL,
         vz_XR,
-        P_XL,
+        vz_XL,
         P_XR,
-        Bx_XL,
+        P_XL,
         Bx_XR,
-        By_XL,
+        Bx_XL,
         By_XR,
-        Bz_XL,
+        By_XL,
         Bz_XR,
+        Bz_XL,
         gamma,
     )
     (
@@ -548,22 +548,22 @@ def update_sim(values):
         flux_Bx_Y,
         flux_Bz_Y,
     ) = get_flux(
-        rho_YL,
         rho_YR,
-        vy_YL,
+        rho_YL,
         vy_YR,
-        vx_YL,
+        vy_YL,
         vx_YR,
-        vz_YL,
+        vx_YL,
         vz_YR,
-        P_YL,
+        vz_YL,
         P_YR,
-        By_YL,
+        P_YL,
         By_YR,
-        Bx_YL,
+        By_YL,
         Bx_YR,
-        Bz_YL,
+        Bx_YL,
         Bz_YR,
+        Bz_YL,
         gamma,
     )
     (
@@ -575,22 +575,22 @@ def update_sim(values):
         flux_Bx_Z,
         flux_By_Z,
     ) = get_flux(
-        rho_ZL,
         rho_ZR,
-        vz_ZL,
+        rho_ZL,
         vz_ZR,
-        vx_ZL,
+        vz_ZL,
         vx_ZR,
-        vy_ZL,
+        vx_ZL,
         vy_ZR,
-        P_ZL,
+        vy_ZL,
         P_ZR,
-        Bz_ZL,
+        P_ZL,
         Bz_ZR,
-        Bx_ZL,
+        Bz_ZL,
         Bx_ZR,
-        By_ZL,
+        Bx_ZL,
         By_ZR,
+        By_ZL,
         gamma,
     )
 
@@ -630,7 +630,7 @@ def compute_divergence(P_dx, P_dy, P_dz, dx):
 
 
 def main():
-    """MHD simulation"""
+    """MHD Simulation"""
 
     # jax.config.update("jax_enable_x64", True)
     # print(jax.default_backend())
@@ -654,6 +654,7 @@ def main():
     # Generate Initial Conditions
     rho = jnp.ones(X.shape)
     P = 0.1 * jnp.ones(X.shape)  # init. gas pressure
+
     alpha = jnp.pi / 4.0
     Xpar = (jnp.cos(alpha) * X + jnp.sin(alpha) * Y) * jnp.sqrt(2)
     v_perp = 0.1 * jnp.sin(2.0 * jnp.pi * Xpar)
