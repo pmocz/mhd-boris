@@ -25,6 +25,7 @@ t_end = 0.5
 t_out = 0.01  # draw frequency
 use_slope_limiting = True
 plot_in_real_time = True
+riemann_solver = "llf"
 
 
 def get_curl(Az, dx):
@@ -295,7 +296,383 @@ def apply_dudt(F, dudt, dt):
     return F + dt * dudt
 
 
-def get_flux(
+# HLLD (adapted from Athena)
+# TODO: test and debug
+def get_flux_hlld(
+    rho_L,
+    rho_R,
+    vx_L,
+    vx_R,
+    vy_L,
+    vy_R,
+    vz_L,
+    vz_R,
+    P_L,
+    P_R,
+    Bx_L,
+    Bx_R,
+    By_L,
+    By_R,
+    Bz_L,
+    Bz_R,
+    gamma,
+    cf_limit,
+):
+    """
+    Calculate fluxed between 2 states with local Lax-Friedrichs/Rusanov rule
+    rho_L        is a matrix of left-state  density
+    rho_R        is a matrix of right-state density
+    vx_L         is a matrix of left-state  x-velocity
+    vx_R         is a matrix of right-state x-velocity
+    vy_L         is a matrix of left-state  y-velocity
+    vy_R         is a matrix of right-state y-velocity
+    P_L          is a matrix of left-state  Total pressure
+    P_R          is a matrix of right-state Total pressure
+    Bx_L         is a matrix of left-state  x-magnetic-field
+    Bx_R         is a matrix of right-state x-magnetic-field
+    By_L         is a matrix of left-state  y-magnetic-field
+    By_R         is a matrix of right-state y-magnetic-field
+    gamma        is the ideal gas gamma
+    flux_Mass    is the matrix of mass fluxes
+    flux_Momx    is the matrix of x-momentum fluxes
+    flux_Momy    is the matrix of y-momentum fluxes
+    flux_Energy  is the matrix of energy fluxes
+    """
+
+    SMALL_NUMBER = 1.0e-8
+
+    P_L -= 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
+    P_R -= 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
+
+    Bxi = 0.5 * (Bx_L + Bx_R)
+
+    Mx_L = rho_L * vx_L
+    My_L = rho_L * vy_L
+    Mz_L = rho_L * vz_L
+    E_L = (
+        P_L / (gamma - 1.0)
+        + 0.5 * rho_L * (vx_L**2 + vy_L**2 + vz_L**2)
+        + 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
+    )
+
+    Mx_R = rho_R * vx_R
+    My_R = rho_R * vy_R
+    Mz_R = rho_R * vz_R
+    E_R = (
+        P_R / (gamma - 1.0)
+        + 0.5 * rho_R * (vx_R**2 + vy_R**2 + vz_R**2)
+        + 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
+    )
+
+    # --- Step 2. ------------------------------------------------------------------
+    #  Compute left & right wave speeds according to Miyoshi & Kusano, eqn. (67)
+    #
+
+    pbl = 0.5 * (Bxi**2 + By_L**2 + Bz_L**2)
+    pbr = 0.5 * (Bxi**2 + By_R**2 + Bz_R**2)
+    gpl = gamma * P_L
+    gpr = gamma * P_R
+    gpbl = gpl + 2.0 * pbl
+    gpbr = gpr + 2.0 * pbr
+
+    Bxsq = Bxi**2
+    cfl = np.sqrt((gpbl + np.sqrt(gpbl**2 - 4.0 * gpl * Bxsq)) / (2.0 * rho_L))
+    cfr = np.sqrt((gpbr + np.sqrt(gpbr**2 - 4.0 * gpr * Bxsq)) / (2.0 * rho_R))
+    cfmax = np.maximum(cfl, cfr)
+
+    spd1 = (vx_L - cfmax) * (vx_L <= vx_R) + (vx_R - cfmax) * (vx_L > vx_R)
+    spd5 = (vx_R + cfmax) * (vx_L <= vx_R) + (vx_L + cfmax) * (vx_L > vx_R)
+
+    # --- Step 3. ------------------------------------------------------------------
+    # Compute L/R fluxes
+    #
+
+    # total pressure
+    ptl = P_L + pbl
+    ptr = P_R + pbr
+
+    FL_d = Mx_L
+    FL_Mx = Mx_L * vx_L + ptl - Bxsq
+    FL_My = rho_L * vx_L * vy_L - Bxi * By_L
+    FL_Mz = rho_L * vx_L * vz_L - Bxi * Bz_L
+    FL_E = vx_L * (E_L + ptl - Bxsq) - Bxi * (vy_L * By_L + vz_L * Bz_L)
+    FL_By = By_L * vx_L - Bxi * vy_L
+    FL_Bz = Bz_L * vx_L - Bxi * vz_L
+    FR_d = Mx_R
+    FR_Mx = Mx_R * vx_R + ptr - Bxsq
+    FR_My = rho_R * vx_R * vy_R - Bxi * By_R
+    FR_Mz = rho_R * vx_R * vz_R - Bxi * Bz_R
+    FR_E = vx_R * (E_R + ptr - Bxsq) - Bxi * (vy_R * By_R + vz_R * Bz_R)
+    FR_By = By_R * vx_R - Bxi * vy_R
+    FR_Bz = Bz_R * vx_R - Bxi * vz_R
+
+    # --- Step 4. ------------------------------------------------------------------
+    #  Return upwind flux if flow is supersonic
+    #
+
+    # deferred for the end
+
+    # --- Step 5. ------------------------------------------------------------------
+    #  Compute middle and Alfven wave speeds
+    #
+
+    sdl = spd1 - vx_L
+    sdr = spd5 - vx_R
+
+    # S_M: eqn (38) of Miyoshi & Kusano
+    spd3 = (sdr * rho_R * vx_R - sdl * rho_L * vx_L - ptr + ptl) / (
+        sdr * rho_R - sdl * rho_L
+    )
+
+    sdml = spd1 - spd3
+    sdmr = spd5 - spd3
+    # eqn (43) of Miyoshi & Kusano
+    ULst_d = rho_L * sdl / sdml
+    URst_d = rho_R * sdr / sdmr
+    sqrtdl = np.sqrt(ULst_d)
+    sqrtdr = np.sqrt(URst_d)
+
+    # eqn (51) of Miyoshi & Kusano
+    spd2 = spd3 - np.abs(Bxi) / sqrtdl
+    spd4 = spd3 + np.abs(Bxi) / sqrtdr
+
+    # --- Step 6. ------------------------------------------------------------------
+    # Compute intermediate states
+    #
+
+    ptst = ptl + rho_L * sdl * (sdl - sdml)
+
+    # Ul*
+    # eqn (39) of M&K
+    ULst_Mx = ULst_d * spd3
+    ULst_Bx = Bxi
+    isDegen = np.abs(rho_L * sdl * sdml / Bxsq - 1.0) < SMALL_NUMBER
+
+    # eqns (44) and (46) of M&K
+    tmp = Bxi * (sdl - sdml) / (rho_L * sdl * sdml - Bxsq)
+    ULst_My = (ULst_d * vy_L) * isDegen + (ULst_d * (vy_L - By_L * tmp)) * (~isDegen)
+    ULst_Mz = (ULst_d * vz_L) * isDegen + (ULst_d * (vz_L - Bz_L * tmp)) * (~isDegen)
+
+    # eqns (45) and (47) of M&K
+    tmp = (rho_L * (sdl) ** 2 - Bxsq) / (rho_L * sdl * sdml - Bxsq)
+    ULst_By = (By_L) * isDegen + (By_L * tmp) * (~isDegen)
+    ULst_Bz = (Bz_L) * isDegen + (Bz_L * tmp) * (~isDegen)
+
+    vbstl = (ULst_Mx * Bxi + ULst_My * ULst_By + ULst_Mz * ULst_Bz) / ULst_d
+    # eqn (48) of M&K#
+    ULst_E = (
+        sdl * E_L
+        - ptl * vx_L
+        + ptst * spd3
+        + Bxi * (vx_L * Bxi + vy_L * By_L + vz_L * Bz_L - vbstl)
+    ) / sdml
+    WLst_d = ULst_d
+    WLst_vx = ULst_Mx / ULst_d
+    WLst_vy = ULst_My / ULst_d
+    WLst_vz = ULst_Mz / ULst_d
+    WLst_Bx = ULst_Bx
+    WLst_By = ULst_By
+    WLst_Bz = ULst_Bz
+    WLst_P = (gamma - 1) * (
+        ULst_E
+        - 0.5 * WLst_d * (WLst_vx**2 + WLst_vy**2 + WLst_vz**2)
+        - 0.5 * (WLst_Bx**2 + WLst_By**2 + WLst_Bz**2)
+    )
+
+    # Ur*
+    # eqn (39) of M&K
+    URst_Mx = URst_d * spd3
+    URst_Bx = Bxi
+    isDegen = np.abs(rho_R * sdr * sdmr / Bxsq - 1.0) < SMALL_NUMBER
+
+    # eqns (44) and (46) of M&K
+    tmp = Bxi * (sdr - sdmr) / (rho_R * sdr * sdmr - Bxsq)
+    URst_My = (URst_d * vy_R) * isDegen + (URst_d * (vy_R - By_R * tmp)) * (~isDegen)
+    URst_Mz = (URst_d * vz_R) * isDegen + (URst_d * (vz_R - Bz_R * tmp)) * (~isDegen)
+
+    # eqns (45) and (47) of M&K
+    tmp = (rho_R * (sdr) ** 2 - Bxsq) / (rho_R * sdr * sdmr - Bxsq)
+    URst_By = (By_R) * isDegen + (By_R * tmp) * (~isDegen)
+    URst_Bz = (Bz_R) * isDegen + (Bz_R * tmp) * (~isDegen)
+
+    vbstr = (URst_Mx * Bxi + URst_My * URst_By + URst_Mz * URst_Bz) / URst_d
+    # eqn (48) of M&K
+    URst_E = (
+        sdr * E_R
+        - ptr * vx_R
+        + ptst * spd3
+        + Bxi * (vx_R * Bxi + vy_R * By_R + vz_R * Bz_R - vbstr)
+    ) / sdmr
+    WRst_d = URst_d
+    WRst_vx = URst_Mx / URst_d
+    WRst_vy = URst_My / URst_d
+    WRst_vz = URst_Mz / URst_d
+    WRst_Bx = URst_Bx
+    WRst_By = URst_By
+    WRst_Bz = URst_Bz
+    WRst_P = (gamma - 1) * (
+        URst_E
+        - 0.5 * WRst_d * (WRst_vx**2 + WRst_vy**2 + WRst_vz**2)
+        - 0.5 * (WRst_Bx**2 + WRst_By**2 + WRst_Bz**2)
+    )
+
+    # Ul**  and Ur**  - if Bx is zero, same as  * -states
+    #   if(Bxi == 0.0)
+    isDegen = 0.5 * Bxsq / np.minimum(pbl, pbr) < (SMALL_NUMBER) ** 2
+    ULdst_d = ULst_d * isDegen
+    ULdst_Mx = ULst_Mx * isDegen
+    ULdst_My = ULst_My * isDegen
+    ULdst_Mz = ULst_Mz * isDegen
+    ULdst_By = ULst_By * isDegen
+    ULdst_Bz = ULst_Bz * isDegen
+    ULdst_E = ULst_E * isDegen
+
+    URdst_d = URst_d * isDegen
+    URdst_Mx = URst_Mx * isDegen
+    URdst_My = URst_My * isDegen
+    URdst_Mz = URst_Mz * isDegen
+    URdst_By = URst_By * isDegen
+    URdst_Bz = URst_Bz * isDegen
+    URdst_E = URst_E * isDegen
+
+    # else
+    invsumd = 1.0 / (sqrtdl + sqrtdr)
+    Bxsig = 0 * Bxi - 1
+    Bxsig[Bxi > 0] = 1
+
+    ULdst_d = ULdst_d + ULst_d * (~isDegen)
+    URdst_d = URdst_d + URst_d * (~isDegen)
+
+    ULdst_Mx = ULdst_Mx + ULst_Mx * (~isDegen)
+    URdst_Mx = URdst_Mx + URst_Mx * (~isDegen)
+
+    # eqn (59) of M&K
+    tmp = invsumd * (sqrtdl * WLst_vy + sqrtdr * WRst_vy + Bxsig * (URst_By - ULst_By))
+    ULdst_My = ULdst_My + ULdst_d * tmp * (~isDegen)
+    URdst_My = URdst_My + URdst_d * tmp * (~isDegen)
+
+    # eqn (60) of M&K
+    tmp = invsumd * (sqrtdl * WLst_vz + sqrtdr * WRst_vz + Bxsig * (URst_Bz - ULst_Bz))
+    ULdst_Mz = ULdst_Mz + ULdst_d * tmp * (~isDegen)
+    URdst_Mz = URdst_Mz + URdst_d * tmp * (~isDegen)
+
+    # eqn (61) of M&K
+    tmp = invsumd * (
+        sqrtdl * URst_By
+        + sqrtdr * ULst_By
+        + Bxsig * sqrtdl * sqrtdr * (WRst_vy - WLst_vy)
+    )
+    ULdst_By = ULdst_By + tmp * (~isDegen)
+    URdst_By = URdst_By + tmp * (~isDegen)
+
+    # eqn (62) of M&K
+    tmp = invsumd * (
+        sqrtdl * URst_Bz
+        + sqrtdr * ULst_Bz
+        + Bxsig * sqrtdl * sqrtdr * (WRst_vz - WLst_vz)
+    )
+    ULdst_Bz = ULdst_Bz + tmp * (~isDegen)
+    URdst_Bz = URdst_Bz + tmp * (~isDegen)
+
+    # eqn (63) of M&K
+    tmp = spd3 * Bxi + (ULdst_My * ULdst_By + ULdst_Mz * ULdst_Bz) / ULdst_d
+    ULdst_E = ULdst_E + (ULst_E - sqrtdl * Bxsig * (vbstl - tmp)) * (~isDegen)
+    URdst_E = URdst_E + (URst_E + sqrtdr * Bxsig * (vbstr - tmp)) * (~isDegen)
+
+    # --- Step 7. ------------------------------------------------------------------
+    #  Compute flux
+    #
+
+    flux_Mass = FL_d * (spd1 >= 0)
+    flux_Momx = FL_Mx * (spd1 >= 0)
+    flux_Momy = FL_My * (spd1 >= 0)
+    flux_Momz = FL_Mz * (spd1 >= 0)
+    flux_Energy = FL_E * (spd1 >= 0)
+    flux_By = FL_By * (spd1 >= 0)
+    flux_Bz = FL_Bz * (spd1 >= 0)
+
+    flux_Mass += FR_d * (spd5 <= 0)
+    flux_Momx += FR_Mx * (spd5 <= 0)
+    flux_Momy += FR_My * (spd5 <= 0)
+    flux_Momz += FR_Mz * (spd5 <= 0)
+    flux_Energy += FR_E * (spd5 <= 0)
+    flux_By += FR_By * (spd5 <= 0)
+    flux_Bz += FR_Bz * (spd5 <= 0)
+
+    # if(spd2 >= 0)
+    # return Fl * #
+    flux_Mass += (FL_d + spd1 * (ULst_d - rho_L)) * ((spd1 < 0) & (spd2 >= 0))
+    flux_Momx += (FL_Mx + spd1 * (ULst_Mx - Mx_L)) * ((spd1 < 0) & (spd2 >= 0))
+    flux_Momy += (FL_My + spd1 * (ULst_My - My_L)) * ((spd1 < 0) & (spd2 >= 0))
+    flux_Momz += (FL_Mz + spd1 * (ULst_Mz - Mz_L)) * ((spd1 < 0) & (spd2 >= 0))
+    flux_Energy += (FL_E + spd1 * (ULst_E - E_L)) * ((spd1 < 0) & (spd2 >= 0))
+    flux_By += (FL_By + spd1 * (ULst_By - By_L)) * ((spd1 < 0) & (spd2 >= 0))
+    flux_Bz += (FL_Bz + spd1 * (ULst_Bz - Bz_L)) * ((spd1 < 0) & (spd2 >= 0))
+
+    # elseif(spd3 >= 0)
+    # return Fl *  *
+    tmp = spd2 - spd1
+    flux_Mass += (FL_d - spd1 * rho_L - tmp * ULst_d + spd2 * ULdst_d) * (
+        (spd2 < 0) & (spd3 >= 0)
+    )
+    flux_Momx += (FL_Mx - spd1 * Mx_L - tmp * ULst_Mx + spd2 * ULdst_Mx) * (
+        (spd2 < 0) & (spd3 >= 0)
+    )
+    flux_Momy += (FL_My - spd1 * My_L - tmp * ULst_My + spd2 * ULdst_My) * (
+        (spd2 < 0) & (spd3 >= 0)
+    )
+    flux_Momz += (FL_Mz - spd1 * Mz_L - tmp * ULst_Mz + spd2 * ULdst_Mz) * (
+        (spd2 < 0) & (spd3 >= 0)
+    )
+    flux_Energy += (FL_E - spd1 * E_L - tmp * ULst_E + spd2 * ULdst_E) * (
+        (spd2 < 0) & (spd3 >= 0)
+    )
+    flux_By += (FL_By - spd1 * By_L - tmp * ULst_By + spd2 * ULdst_By) * (
+        (spd2 < 0) & (spd3 >= 0)
+    )
+    flux_Bz += (FL_Bz - spd1 * Bz_L - tmp * ULst_Bz + spd2 * ULdst_Bz) * (
+        (spd2 < 0) & (spd3 >= 0)
+    )
+
+    # elseif(spd4 > 0)
+    # return Fr *  *
+    tmp = spd4 - spd5
+    flux_Mass += (FR_d - spd5 * rho_R - tmp * URst_d + spd4 * URdst_d) * (
+        (spd3 < 0) & (spd4 > 0)
+    )
+    flux_Momx += (FR_Mx - spd5 * Mx_R - tmp * URst_Mx + spd4 * URdst_Mx) * (
+        (spd3 < 0) & (spd4 > 0)
+    )
+    flux_Momy += (FR_My - spd5 * My_R - tmp * URst_My + spd4 * URdst_My) * (
+        (spd3 < 0) & (spd4 > 0)
+    )
+    flux_Momz += (FR_Mz - spd5 * Mz_R - tmp * URst_Mz + spd4 * URdst_Mz) * (
+        (spd3 < 0) & (spd4 > 0)
+    )
+    flux_Energy += (FR_E - spd5 * E_R - tmp * URst_E + spd4 * URdst_E) * (
+        (spd3 < 0) & (spd4 > 0)
+    )
+    flux_By += (FR_By - spd5 * By_R - tmp * URst_By + spd4 * URdst_By) * (
+        (spd3 < 0) & (spd4 > 0)
+    )
+    flux_Bz += (FR_Bz - spd5 * Bz_R - tmp * URst_Bz + spd4 * URdst_Bz) * (
+        (spd3 < 0) & (spd4 > 0)
+    )
+
+    # else
+    # return Fr *
+    flux_Mass += (FR_d + spd5 * (URst_d - rho_R)) * ((spd4 <= 0) & (spd5 > 0))
+    flux_Momx += (FR_Mx + spd5 * (URst_Mx - Mx_R)) * ((spd4 <= 0) & (spd5 > 0))
+    flux_Momy += (FR_My + spd5 * (URst_My - My_R)) * ((spd4 <= 0) & (spd5 > 0))
+    flux_Momz += (FR_Mz + spd5 * (URst_Mz - Mz_R)) * ((spd4 <= 0) & (spd5 > 0))
+    flux_Energy += (FR_E + spd5 * (URst_E - E_R)) * ((spd4 <= 0) & (spd5 > 0))
+    flux_By += (FR_By + spd5 * (URst_By - By_R)) * ((spd4 <= 0) & (spd5 > 0))
+    flux_Bz += (FR_Bz + spd5 * (URst_Bz - Bz_R)) * ((spd4 <= 0) & (spd5 > 0))
+
+    return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
+
+
+def get_flux_llf(
     rho_L,
     rho_R,
     vx_L,
@@ -338,12 +715,12 @@ def get_flux(
 
     # left and right energies
     en_L = (
-        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1)
+        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1.0)
         + 0.5 * rho_L * (vx_L**2 + vy_L**2 + vz_L**2)
         + 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
     )
     en_R = (
-        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1)
+        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1.0)
         + 0.5 * rho_R * (vx_R**2 + vy_R**2 + vz_R**2)
         + 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
     )
@@ -358,7 +735,7 @@ def get_flux(
     By_star = 0.5 * (By_L + By_R)
     Bz_star = 0.5 * (Bz_L + Bz_R)
 
-    P_star = (gamma - 1) * (
+    P_star = (gamma - 1.0) * (
         en_star
         - 0.5 * (momx_star**2 + momy_star**2 + momz_star**2) / rho_star
         - 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
@@ -404,15 +781,82 @@ def get_flux(
     C = np.maximum(C_L, C_R)
 
     # add stabilizing diffusive term
-    flux_Mass -= C * 0.5 * (rho_L - rho_R)
-    flux_Momx -= C * 0.5 * (rho_L * vx_L - rho_R * vx_R)
-    flux_Momy -= C * 0.5 * (rho_L * vy_L - rho_R * vy_R)
-    flux_Momz -= C * 0.5 * (rho_L * vz_L - rho_R * vz_R)
-    flux_Energy -= C * 0.5 * (en_L - en_R)
-    flux_By -= C * 0.5 * (By_L - By_R)
-    flux_Bz -= C * 0.5 * (Bz_L - Bz_R)
+    flux_Mass -= C * 0.5 * (rho_R - rho_L)
+    flux_Momx -= C * 0.5 * (rho_R * vx_R - rho_L * vx_L)
+    flux_Momy -= C * 0.5 * (rho_R * vy_R - rho_L * vy_L)
+    flux_Momz -= C * 0.5 * (rho_R * vz_R - rho_L * vz_L)
+    flux_Energy -= C * 0.5 * (en_R - en_L)
+    flux_By -= C * 0.5 * (By_R - By_L)
+    flux_Bz -= C * 0.5 * (Bz_R - Bz_L)
 
     return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
+
+
+def get_flux(
+    method,
+    rho_L,
+    rho_R,
+    vx_L,
+    vx_R,
+    vy_L,
+    vy_R,
+    vz_L,
+    vz_R,
+    P_L,
+    P_R,
+    Bx_L,
+    Bx_R,
+    By_L,
+    By_R,
+    Bz_L,
+    Bz_R,
+    gamma,
+    cf_limit,
+):
+    if method == "llf":
+        return get_flux_llf(
+            rho_L,
+            rho_R,
+            vx_L,
+            vx_R,
+            vy_L,
+            vy_R,
+            vz_L,
+            vz_R,
+            P_L,
+            P_R,
+            Bx_L,
+            Bx_R,
+            By_L,
+            By_R,
+            Bz_L,
+            Bz_R,
+            gamma,
+            cf_limit,
+        )
+    elif method == "hlld":
+        return get_flux_hlld(
+            rho_L,
+            rho_R,
+            vx_L,
+            vx_R,
+            vy_L,
+            vy_R,
+            vz_L,
+            vz_R,
+            P_L,
+            P_R,
+            Bx_L,
+            Bx_R,
+            By_L,
+            By_R,
+            Bz_L,
+            Bz_R,
+            gamma,
+            cf_limit,
+        )
+    else:
+        raise ValueError(f"Unknown method {method}")
 
 
 def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
@@ -461,6 +905,7 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
         flux_By_X,
         flux_Bz_X,
     ) = get_flux(
+        riemann_solver,
         rho_XL,
         rho_XR,
         vx_XL,
@@ -489,6 +934,7 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
         flux_Bx_Y,
         flux_Bz_Y,
     ) = get_flux(
+        riemann_solver,
         rho_YL,
         rho_YR,
         vy_YL,
@@ -550,6 +996,7 @@ def main():
         t_end, \
         t_out, \
         use_slope_limiting, \
+        riemann_solver, \
         plot_in_real_time
 
     # Mesh
@@ -563,6 +1010,7 @@ def main():
     # Generate Initial Conditions:
     if prob_id == 1:
         # Orszag-Tang vortex problem
+        riemann_solver = "hlld"
         rho = (gamma**2 / (4.0 * np.pi)) * np.ones(X.shape)
         vx = -np.sin(2.0 * np.pi * Y)
         vy = np.sin(2.0 * np.pi * X)
