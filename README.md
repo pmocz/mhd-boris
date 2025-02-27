@@ -1,5 +1,5 @@
 # mhd-boris
-Finite Volume Constrained Transport simulation of the Orszag-Tang vortex
+2.5D Constrained Transport Magnetohydrodynamics
 
 Philip Mocz (2024), [@PMocz](https://twitter.com/PMocz)
 
@@ -9,7 +9,7 @@ Based on
 See also: https://arxiv.org/abs/1902.02810
 
 Simulate the Orszag-Tang vortex MHD problem
-with the Boris Integrator
+with the Boris-like Integrator
 
 Run the simulations and produce analysis with:
 
