@@ -67,7 +67,7 @@ def getBavg(bx, by):
     return Bx, By
 
 
-def getConserved(rho, vx, vy, P, Bx, By, gamma, vol):
+def getConserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
     """
       Calculate the conserved variable from the primitive
     rho      is matrix of cell densities
@@ -86,16 +86,17 @@ def getConserved(rho, vx, vy, P, Bx, By, gamma, vol):
     Mass = rho * vol
     Momx = rho * vx * vol
     Momy = rho * vy * vol
+    Momz = rho * vz * vol
     Energy = (
-        (P - 0.5 * (Bx**2 + By**2)) / (gamma - 1)
-        + 0.5 * rho * (vx**2 + vy**2)
-        + 0.5 * (Bx**2 + By**2)
+        (P - 0.5 * (Bx**2 + By**2 + Bz**2)) / (gamma - 1)
+        + 0.5 * rho * (vx**2 + vy**2 + vz**2)
+        + 0.5 * (Bx**2 + By**2 + Bz**2)
     ) * vol
 
-    return Mass, Momx, Momy, Energy
+    return Mass, Momx, Momy, Momz, Energy
 
 
-def getPrimitive(Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit):
+def getPrimitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit):
     """
       Calculate the primitive variable from the conservative
     Mass     is matrix of mass in cells
@@ -114,19 +115,23 @@ def getPrimitive(Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit):
     rho = Mass / vol
     vx = Momx / rho / vol
     vy = Momy / rho / vol
-    P = (Energy / vol - 0.5 * rho * (vx**2 + vy**2) - 0.5 * (Bx**2 + By**2)) * (
-        gamma - 1
-    ) + 0.5 * (Bx**2 + By**2)
+    vz = Momz / rho / vol
+    P = (
+        Energy / vol
+        - 0.5 * rho * (vx**2 + vy**2 + vz**2)
+        - 0.5 * (Bx**2 + By**2 + Bz**2)
+    ) * (gamma - 1) + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     # Try 2: apply boris factor in recovering the velocity
-    c0 = np.sqrt(gamma * (P - 0.5 * (Bx**2 + By**2)) / rho)
-    ca = np.sqrt((Bx**2 + By**2) / rho)
+    # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
+    c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
+    ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
     cf = np.sqrt(c0**2 + ca**2)
     alpha = np.minimum(1.0, cf_limit / cf)
     vx *= alpha
     vy *= alpha
 
-    return rho, vx, vy, P
+    return rho, vx, vy, vz, P
 
 
 def getGradient(f, dx):
@@ -285,12 +290,16 @@ def getFlux(
     vx_R,
     vy_L,
     vy_R,
+    vz_L,
+    vz_R,
     P_L,
     P_R,
     Bx_L,
     Bx_R,
     By_L,
     By_R,
+    Bz_L,
+    Bz_R,
     gamma,
     cf_limit,
 ):
@@ -317,44 +326,54 @@ def getFlux(
 
     # left and right energies
     en_L = (
-        (P_L - 0.5 * (Bx_L**2 + By_L**2)) / (gamma - 1)
-        + 0.5 * rho_L * (vx_L**2 + vy_L**2)
-        + 0.5 * (Bx_L**2 + By_L**2)
+        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1)
+        + 0.5 * rho_L * (vx_L**2 + vy_L**2 + vz_L**2)
+        + 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
     )
     en_R = (
-        (P_R - 0.5 * (Bx_R**2 + By_R**2)) / (gamma - 1)
-        + 0.5 * rho_R * (vx_R**2 + vy_R**2)
-        + 0.5 * (Bx_R**2 + By_R**2)
+        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1)
+        + 0.5 * rho_R * (vx_R**2 + vy_R**2 + vz_R**2)
+        + 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
     )
 
     # compute star (averaged) states
     rho_star = 0.5 * (rho_L + rho_R)
     momx_star = 0.5 * (rho_L * vx_L + rho_R * vx_R)
     momy_star = 0.5 * (rho_L * vy_L + rho_R * vy_R)
+    momz_star = 0.5 * (rho_L * vz_L + rho_R * vz_R)
     en_star = 0.5 * (en_L + en_R)
     Bx_star = 0.5 * (Bx_L + Bx_R)
     By_star = 0.5 * (By_L + By_R)
+    Bz_star = 0.5 * (Bz_L + Bz_R)
 
     P_star = (gamma - 1) * (
         en_star
-        - 0.5 * (momx_star**2 + momy_star**2) / rho_star
-        - 0.5 * (Bx_star**2 + By_star**2)
-    ) + 0.5 * (Bx_star**2 + By_star**2)
+        - 0.5 * (momx_star**2 + momy_star**2 + momz_star**2) / rho_star
+        - 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
+    ) + 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
 
     # compute fluxes (local Lax-Friedrichs/Rusanov)
     flux_Mass = momx_star
     flux_Momx = momx_star**2 / rho_star + P_star - Bx_star * Bx_star
     flux_Momy = momx_star * momy_star / rho_star - Bx_star * By_star
+    flux_Momz = momx_star * momz_star / rho_star - Bx_star * Bz_star
     flux_Energy = (en_star + P_star) * momx_star / rho_star - Bx_star * (
-        Bx_star * momx_star + By_star * momy_star
+        Bx_star * momx_star + By_star * momy_star + Bz_star * momz_star
     ) / rho_star
     flux_By = (By_star * momx_star - Bx_star * momy_star) / rho_star
+    flux_Bz = (Bz_star * momx_star - Bx_star * momz_star) / rho_star
 
     # find wavespeeds
-    c0_L = np.sqrt(gamma * (P_L - 0.5 * (Bx_L**2 + By_L**2)) / rho_L)
-    c0_R = np.sqrt(gamma * (P_R - 0.5 * (Bx_R**2 + By_R**2)) / rho_R)
-    ca_L = np.sqrt((Bx_L**2 + By_L**2) / rho_L)
-    ca_R = np.sqrt((Bx_R**2 + By_R**2) / rho_R)
+    # c0_L = np.sqrt( gamma*(P_L-0.5*(Bx_L**2+By_L**2+Bz_L**2))/rho_L )
+    # c0_R = np.sqrt( gamma*(P_R-0.5*(Bx_R**2+By_R**2+Bz_R**2))/rho_R )
+    c0_L = np.sqrt(
+        gamma * (np.maximum(P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2), 1.0e-16)) / rho_L
+    )
+    c0_R = np.sqrt(
+        gamma * (np.maximum(P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2), 1.0e-16)) / rho_R
+    )
+    ca_L = np.sqrt((Bx_L**2 + By_L**2 + Bz_L**2) / rho_L)
+    ca_R = np.sqrt((Bx_R**2 + By_R**2 + Bz_R**2) / rho_R)
     cf_L = np.sqrt(c0_L**2 + ca_L**2)
     cf_R = np.sqrt(c0_R**2 + ca_R**2)
     # apply boris factor to wave speeds and momentum flux
@@ -376,10 +395,12 @@ def getFlux(
     flux_Mass -= C * 0.5 * (rho_L - rho_R)
     flux_Momx -= C * 0.5 * (rho_L * vx_L - rho_R * vx_R)
     flux_Momy -= C * 0.5 * (rho_L * vy_L - rho_R * vy_R)
+    flux_Momz -= C * 0.5 * (rho_L * vz_L - rho_R * vz_R)
     flux_Energy -= C * 0.5 * (en_L - en_R)
     flux_By -= C * 0.5 * (By_L - By_R)
+    flux_Bz -= C * 0.5 * (Bz_L - Bz_R)
 
-    return flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By
+    return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
 
 
 def main():
@@ -410,9 +431,9 @@ def main():
     dx = boxsize / N
     vol = dx**2
     xlin = np.linspace(0.5 * dx, boxsize - 0.5 * dx, N)
-    Y, X = np.meshgrid(xlin, xlin)
-    xlin_node = np.linspace(dx, boxsize, N)
-    Yn, Xn = np.meshgrid(xlin_node, xlin_node)
+    X, Y = np.meshgrid(xlin, xlin, indexing="ij")
+    # xlin_node = np.linspace(dx, boxsize, N)
+    # Xn, Yn = np.meshgrid( xlin_node, xlin_node, indexing="ij" )
 
     # Generate Initial Conditions:
     if prob_id == 1:
@@ -425,12 +446,53 @@ def main():
         Az = np.cos(4 * np.pi * X) / (4 * np.pi * np.sqrt(4 * np.pi)) + np.cos(
             2 * np.pi * Y
         ) / (2 * np.pi * np.sqrt(4 * np.pi))
-        bx, by = getCurl(Az, dx)
+        vz = np.zeros(X.shape)
+        Bz = np.zeros(X.shape)
     elif prob_id == 2:
         # Circularly polarized Alfven wave
         rho = np.ones(X.shape)
+        P = 0.1 * np.ones(X.shape)  # init. gas pressure
+        alpha = np.pi / 4.0
+        Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2)
+        v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
+        v_par = np.zeros(X.shape)
+        # b_perp = 0.1 * np.sin(2.0*np.pi*Xpar)
+        vx = v_par * np.cos(alpha) - v_perp * np.sin(alpha)
+        vy = v_par * np.sin(alpha) + v_perp * np.cos(alpha)
+        Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * Xpar)
+        vz = 0.1 * np.cos(2.0 * np.pi * Xpar)
+        Bz = 0.1 * np.cos(2.0 * np.pi * Xpar)
 
+        # bx, by = getCurl(Az, dx)
+        # plt.imshow(vx.T, cmap='jet')
+        # plt.show()
         # XXX
+
+        # simplified ICs XXX
+        vx = np.zeros(X.shape)
+        vy = 0.1 * np.sin(2.0 * np.pi * X)
+        vz = 0.1 * np.cos(2.0 * np.pi * X)
+        Ax = np.zeros(X.shape)
+        Ay = 0.1 / (2.0 * np.pi) * np.sin(2.0 * np.pi * X)
+        Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
+        Bz = 0.1 * np.cos(2.0 * np.pi * X)
+
+        courant_fac = courant_fac / 10.0
+        tEnd = 4.0
+
+    elif prob_id == 3:
+        # Magnetic Field Loop Test
+        rho = np.ones(X.shape)
+        P = np.ones(X.shape)
+        vx = np.ones(X.shape) * np.sin(np.pi / 3)
+        vy = np.ones(X.shape) * np.cos(np.pi / 3)
+        vz = np.zeros(X.shape)
+        Bz = np.ones(X.shape)
+        anorm = 1.0e-3
+        r0 = 0.3
+        r = np.sqrt((X - 0.5) ** 2 + (Y - 0.5) ** 2)
+        Az = np.maximum(anorm * (r0 - r), 0)
+        # courant_fac = courant_fac / 10.0
     else:
         print("Problem ID not recognized")
         return
@@ -439,10 +501,12 @@ def main():
     Bx, By = getBavg(bx, by)
 
     # add magnetic pressure to get the total pressure
-    P = P + 0.5 * (Bx**2 + By**2)
+    P = P + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     # Get conserved variables
-    Mass, Momx, Momy, Energy = getConserved(rho, vx, vy, P, Bx, By, gamma, vol)
+    Mass, Momx, Momy, Momz, Energy = getConserved(
+        rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol
+    )
 
     # keep track of timesteps
     dt_sav = []
@@ -456,19 +520,22 @@ def main():
 
         # get Primitive variables
         Bx, By = getBavg(bx, by)
-        rho, vx, vy, P = getPrimitive(
-            Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit
+        rho, vx, vy, vz, P = getPrimitive(
+            Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
         )
 
         # get time step (CFL) = dx / max signal speed
-        c0 = np.sqrt(gamma * (P - 0.5 * (Bx**2 + By**2)) / rho)
-        ca = np.sqrt((Bx**2 + By**2) / rho)
+        # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho)
+        c0 = np.sqrt(
+            gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho
+        )
+        ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
         cf = np.sqrt(c0**2 + ca**2)
         max_cf = np.max(cf)
         alpha = np.minimum(1.0, cf_limit / np.sqrt(c0**2 + ca**2))
         # cf *= alpha
-        dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2)))
-        u_max = np.max(np.sqrt(vx**2 + vy**2))
+        dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
+        u_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
 
         plotThisTurn = False
         if t + dt > outputCount * tOut:
@@ -479,51 +546,72 @@ def main():
         rho_dx, rho_dy = getGradient(rho, dx)
         vx_dx, vx_dy = getGradient(vx, dx)
         vy_dx, vy_dy = getGradient(vy, dx)
+        vz_dx, vz_dy = getGradient(vz, dx)
         P_dx, P_dy = getGradient(P, dx)
         Bx_dx, Bx_dy = getGradient(Bx, dx)
         By_dx, By_dy = getGradient(By, dx)
+        Bz_dx, Bz_dy = getGradient(Bz, dx)
 
         # slope limit gradients
         if useSlopeLimiting:
             rho_dx, rho_dy = slopeLimit(rho, dx, rho_dx, rho_dy)
             vx_dx, vx_dy = slopeLimit(vx, dx, vx_dx, vx_dy)
             vy_dx, vy_dy = slopeLimit(vy, dx, vy_dx, vy_dy)
+            vz_dx, vz_dy = slopeLimit(vz, dx, vz_dx, vz_dy)
             P_dx, P_dy = slopeLimit(P, dx, P_dx, P_dy)
             Bx_dx, Bx_dy = slopeLimit(Bx, dx, Bx_dx, Bx_dy)
             By_dx, By_dy = slopeLimit(By, dx, By_dx, By_dy)
+            Bz_dx, Bz_dy = slopeLimit(Bz, dx, Bz_dx, Bz_dy)
 
-        # extrapolate half-step in time
+        # extrapolate rho half-step in time
         rho_prime = rho - 0.5 * dt * (
             vx * rho_dx + rho * vx_dx + vy * rho_dy + rho * vy_dy
         )
+        # extrapolate velocity half-step in time
         vx_prime = vx - 0.5 * dt * (
             vx * vx_dx
             + vy * vx_dy
-            + (1 / rho) * P_dx
-            - (2 * Bx / rho) * Bx_dx
+            + (1.0 / rho) * P_dx
+            - (Bx / rho) * (2.0 * Bx_dx + By_dy)
             - (By / rho) * Bx_dy
-            - (Bx / rho) * By_dy
         )
         vy_prime = vy - 0.5 * dt * (
             vx * vy_dx
             + vy * vy_dy
-            + (1 / rho) * P_dy
-            - (2 * By / rho) * By_dy
+            + (1.0 / rho) * P_dy
             - (Bx / rho) * By_dx
-            - (By / rho) * Bx_dx
+            - (By / rho) * (Bx_dx + 2.0 * By_dy)
         )
+        vz_prime = vz - 0.5 * dt * (
+            vx * vz_dx + vy * vz_dy - (Bx / rho) * Bz_dx - (By / rho) * Bz_dy
+        )
+        # extrapolate pressure half-step in time
         P_prime = P - 0.5 * dt * (
-            (gamma * (P - 0.5 * (Bx**2 + By**2)) + By**2) * vx_dx
+            (gamma * (P - 0.5 * (Bx**2 + By**2 + Bz**2)) + By**2 + Bz**2) * vx_dx
             - Bx * By * vy_dx
+            - Bx * Bz * vz_dx
             + vx * P_dx
-            + (gamma - 2) * (Bx * vx + By * vy) * Bx_dx
+            + (gamma - 2.0) * (Bx * vx + By * vy + Bz * vz) * Bx_dx
             - By * Bx * vx_dy
-            + (gamma * (P - 0.5 * (Bx**2 + By**2)) + Bx**2) * vy_dy
+            + (gamma * (P - 0.5 * (Bx**2 + By**2 + Bz**2)) + Bx**2 + Bz**2) * vy_dy
+            - By * Bz * vz_dy
             + vy * P_dy
-            + (gamma - 2) * (Bx * vx + By * vy) * By_dy
+            + (gamma - 2.0) * (Bx * vx + By * vy + Bz * vz) * By_dy
         )
-        Bx_prime = Bx - 0.5 * dt * (-By * vx_dy + Bx * vy_dy + vy * Bx_dy - vx * By_dy)
-        By_prime = By - 0.5 * dt * (By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)
+
+        # extrapolate magnetic field half-step in time
+        Bx_prime = Bx - 0.5 * dt * (Bx * vy_dy - By * vx_dy - vx * By_dy + vy * Bx_dy)
+        By_prime = By - 0.5 * dt * (-Bx * vy_dx + By * vx_dx + vx * By_dx - vy * Bx_dx)
+        Bz_prime = Bz - 0.5 * dt * (
+            -Bx * vz_dx
+            - By * vz_dy
+            + Bz * vx_dx
+            + Bz * vy_dy
+            + vx * Bz_dx
+            + vy * Bz_dy
+            - vz * Bx_dx
+            - vz * By_dy
+        )
 
         # extrapolate in space to face centers
         rho_XL, rho_XR, rho_YL, rho_YR = extrapolateInSpaceToFace(
@@ -535,6 +623,9 @@ def main():
         vy_XL, vy_XR, vy_YL, vy_YR = extrapolateInSpaceToFace(
             vy_prime, vy_dx, vy_dy, dx
         )
+        vz_XL, vz_XR, vz_YL, vz_YR = extrapolateInSpaceToFace(
+            vz_prime, vz_dx, vz_dy, dx
+        )
         P_XL, P_XR, P_YL, P_YR = extrapolateInSpaceToFace(P_prime, P_dx, P_dy, dx)
         Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolateInSpaceToFace(
             Bx_prime, Bx_dx, Bx_dy, dx
@@ -542,37 +633,64 @@ def main():
         By_XL, By_XR, By_YL, By_YR = extrapolateInSpaceToFace(
             By_prime, By_dx, By_dy, dx
         )
+        Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolateInSpaceToFace(
+            Bz_prime, Bz_dx, Bz_dy, dx
+        )
 
         # compute fluxes (local Lax-Friedrichs/Rusanov)
-        flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X, flux_By_X = getFlux(
+        (
+            flux_Mass_X,
+            flux_Momx_X,
+            flux_Momy_X,
+            flux_Momz_X,
+            flux_Energy_X,
+            flux_By_X,
+            flux_Bz_X,
+        ) = getFlux(
             rho_XL,
             rho_XR,
             vx_XL,
             vx_XR,
             vy_XL,
             vy_XR,
+            vz_XR,
+            vz_XL,
             P_XL,
             P_XR,
             Bx_XL,
             Bx_XR,
             By_XL,
             By_XR,
+            Bz_XL,
+            Bz_XR,
             gamma,
             cf_limit,
         )
-        flux_Mass_Y, flux_Momy_Y, flux_Momx_Y, flux_Energy_Y, flux_Bx_Y = getFlux(
+        (
+            flux_Mass_Y,
+            flux_Momy_Y,
+            flux_Momx_Y,
+            flux_Momz_Y,
+            flux_Energy_Y,
+            flux_Bx_Y,
+            flux_Bz_Y,
+        ) = getFlux(
             rho_YL,
             rho_YR,
             vy_YL,
             vy_YR,
             vx_YL,
             vx_YR,
+            vz_YL,
+            vz_YR,
             P_YL,
             P_YR,
             By_YL,
             By_YR,
             Bx_YL,
             Bx_YR,
+            Bz_YL,
+            Bz_YR,
             gamma,
             cf_limit,
         )
@@ -581,7 +699,9 @@ def main():
         Mass = applyFluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dt)
         Momx = applyFluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dt)
         Momy = applyFluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
+        Momz = applyFluxes(Momz, flux_Momz_X, flux_Momz_Y, dx, dt)
         Energy = applyFluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
+        Bz = applyFluxes(Bz, flux_Bz_X, flux_Bz_Y, dx / vol, dt)
         bx, by = constrainedTransport(bx, by, flux_By_X, flux_Bx_Y, dx, dt)
 
         # update time
@@ -610,8 +730,15 @@ def main():
             plt.cla()
             # plt.imshow(rho.T, cmap='jet')
             # plt.clim(0.06, 0.5)
-            plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
-            plt.clim(0.0, 0.8)
+            if prob_id == 1:
+                plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
+                plt.clim(0.0, 0.8)
+            elif prob_id == 2:
+                plt.imshow(Bz.T, cmap="jet")
+                # XXXplt.clim(0.0, 0.8)
+            elif prob_id == 3:
+                plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
+                # XXXplt.clim(0.0, 0.8)
             ax = plt.gca()
             ax.invert_yaxis()
             ax.get_xaxis().set_visible(False)
@@ -630,13 +757,14 @@ def main():
 
     # Save rho, P_B, v, vA, cf, and dt_sav
     Bx, By = getBavg(bx, by)
-    rho, vx, vy, P = getPrimitive(
-        Mass, Momx, Momy, Energy, Bx, By, gamma, vol, cf_limit
+    rho, vx, vy, vz, P = getPrimitive(
+        Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
     )
-    P_B = 0.5 * np.sqrt(Bx**2 + By**2)
-    v = np.sqrt(vx**2 + vy**2)
-    c0 = np.sqrt(gamma * (P - 0.5 * (Bx**2 + By**2)) / rho)
-    ca = np.sqrt((Bx**2 + By**2) / rho)
+    P_B = 0.5 * np.sqrt(Bx**2 + By**2 + Bz**2)
+    v = np.sqrt(vx**2 + vy**2 + vz**2)
+    # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
+    c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
+    ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
     cf = np.sqrt(c0**2 + ca**2)
     np.save(prefix + "data_rho_" + str(cf_limit) + ".npy", rho.T)
     np.save(prefix + "data_P_B_" + str(cf_limit) + ".npy", P_B.T)
