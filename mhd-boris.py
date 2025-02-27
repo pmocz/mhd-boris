@@ -825,7 +825,7 @@ def get_flux(
 
 
 def main():
-    """Finite Volume simulation"""
+    """MHD Simulation"""
 
     # Check for command line arguments
     if len(sys.argv) != 3:
@@ -833,7 +833,7 @@ def main():
         return
 
     # Parse command line argument
-    # for the boris integrator (try 1.0, 1.5, 2.0)
+    # problem id & fast speed limit for boris integrator (e.g. try 1.0, 1.5, 2.0)
     prob_id = int(sys.argv[1])
     cf_limit = float(sys.argv[2])
 
@@ -877,6 +877,7 @@ def main():
         P = 0.1 * np.ones(X.shape)  # init. gas pressure
         alpha = np.pi / 4.0
         Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2.0)
+
         v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
         v_par = np.zeros(X.shape)
         # b_perp = 0.1 * np.sin(2.0*np.pi*Xpar)
@@ -891,14 +892,13 @@ def main():
         # plt.show()
         # XXX
 
-        # simplified ICs XXX
-        # vx = np.zeros(X.shape)
-        # vy = 0.1 * np.sin(2.0 * np.pi * X)
-        # vz = 0.1 * np.cos(2.0 * np.pi * X)
-        # Ax = np.zeros(X.shape)
-        # Ay = 0.1 / (2.0 * np.pi) * np.sin(2.0 * np.pi * X)
-        # Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
-        # Bz = 0.1 * np.cos(2.0 * np.pi * X)
+        # simplified ICs
+        # TODO: switch to using the above ones instead XXX
+        vx = np.zeros(X.shape)
+        vy = 0.1 * np.sin(2.0 * np.pi * X)
+        vz = 0.1 * np.cos(2.0 * np.pi * X)
+        Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
+        Bz = 0.1 * np.cos(2.0 * np.pi * X)
 
         courant_fac = courant_fac / 10.0
         t_end = 4.0
@@ -1160,7 +1160,8 @@ def main():
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.8)
             elif prob_id == 2:
-                plt.imshow(Bz.T, cmap="jet")
+                # plt.imshow(Bz.T, cmap="jet")
+                plt.imshow(By.T, cmap="jet")
                 plt.clim(-0.1, 0.1)
             elif prob_id == 3:
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
