@@ -58,7 +58,7 @@ def get_div(bx, by, dx):
     return divB
 
 
-def get_B_avg(bx, by):
+def get_avg(bx, by):
     """
     Calculate the volume-averaged magnetic field
     bx       is matrix of cell face x-component magnetic-field
@@ -838,7 +838,7 @@ def get_flux(
 
 def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
     """single stage of a runge-kutta method to return dudt of all these variables"""
-    Bx, By = get_B_avg(bx, by)
+    Bx, By = get_avg(bx, by)
 
     rho_dx, rho_dy = get_gradient(rho, dx)
     vx_dx, vx_dy = get_gradient(vx, dx)
@@ -905,29 +905,29 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
     (
         flux_Mass_Y,
         flux_Momy_Y,
-        flux_Momx_Y,
         flux_Momz_Y,
+        flux_Momx_Y,
         flux_Energy_Y,
-        flux_Bx_Y,
         flux_Bz_Y,
+        flux_Bx_Y,
     ) = get_flux(
         riemann_solver,
         rho_YR,
         rho_YL,
         vy_YR,
         vy_YL,
-        vx_YR,
-        vx_YL,
         vz_YR,
         vz_YL,
+        vx_YR,
+        vx_YL,
         P_YR,
         P_YL,
         By_YR,
         By_YL,
-        Bx_YR,
-        Bx_YL,
         Bz_YR,
         Bz_YL,
+        Bx_YR,
+        Bx_YL,
         gamma,
         cf_limit,
     )
@@ -1042,7 +1042,7 @@ def main():
         return
 
     bx, by = get_curl(Az, dx)
-    Bx, By = get_B_avg(bx, by)
+    Bx, By = get_avg(bx, by)
 
     # add magnetic pressure to get the total pressure
     P = P + 0.5 * (Bx**2 + By**2 + Bz**2)
@@ -1062,7 +1062,7 @@ def main():
     # Simulation Main Loop
     while t < t_end:
         # get Primitive variables
-        Bx, By = get_B_avg(bx, by)
+        Bx, By = get_avg(bx, by)
         rho, vx, vy, vz, P = get_primitive(
             Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
         )
@@ -1119,7 +1119,7 @@ def main():
         by = apply_dudt(by, dudt_by, 0.5 * dt)
 
         # second stage
-        Bx, By = get_B_avg(bx, by)
+        Bx, By = get_avg(bx, by)
         rho, vx, vy, vz, P = get_primitive(
             Mass_1, Momx_1, Momy_1, Momz_1, Energy_1, Bx, By, Bz_1, gamma, vol, cf_limit
         )
@@ -1197,7 +1197,7 @@ def main():
     # plt.show()
 
     # Save rho, P_B, v, vA, cf, and dt_sav
-    Bx, By = get_B_avg(bx, by)
+    Bx, By = get_avg(bx, by)
     rho, vx, vy, vz, P = get_primitive(
         Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
     )
