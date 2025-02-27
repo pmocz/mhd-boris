@@ -4,9 +4,11 @@ import sys
 
 """
 2.5D Constrained Transport Magnetohydrodynamics
-Philip Mocz (2024), @PMocz
+Philip Mocz, @PMocz
+Adam Reyes
+(2024)
 
-Simulate the Orszag-Tang vortex MHD problem
+Simulate the Orszag-Tang vortex MHD problem (+more)
 with a Boris-like Integrator to control timesteps!
 
 The original problem has cf_max ~ 1.9, u_max ~ 1.6
@@ -22,7 +24,6 @@ t_out = 0.01  # draw frequency
 use_slope_limiting = True
 plot_in_real_time = True
 riemann_solver = "llf"
-
 
 # directions for np.roll()
 #  -1    right/up
@@ -447,7 +448,7 @@ def get_flux_hlld(
     # Ul*
     # eqn (39) of M&K
     ULst_Mx = ULst_d * spd3
-    ULst_Bx = Bxi
+    # ULst_Bx = Bxi
     isDegen = np.abs(rho_L * sdl * sdml / Bxsq - 1.0) < SMALL_NUMBER
 
     # eqns (44) and (46) of M&K
@@ -484,7 +485,7 @@ def get_flux_hlld(
     # Ur*
     # eqn (39) of M&K
     URst_Mx = URst_d * spd3
-    URst_Bx = Bxi
+    # URst_Bx = Bxi
     isDegen = np.abs(rho_R * sdr * sdmr / Bxsq - 1.0) < SMALL_NUMBER
 
     # eqns (44) and (46) of M&K
@@ -1039,11 +1040,6 @@ def main():
         vz = 0.1 * np.cos(2.0 * np.pi * Xpar)
         Bz = 0.1 * np.cos(2.0 * np.pi * Xpar)
 
-        # bx, by = get_curl(Az, dx)
-        # plt.imshow(vx.T, cmap='jet')
-        # plt.show()
-        # XXX
-
         # simplified ICs
         # TODO: switch to using the above ones instead XXX
         vx = np.zeros(X.shape)
@@ -1052,7 +1048,6 @@ def main():
         Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
         Bz = 0.1 * np.cos(2.0 * np.pi * X)
 
-        courant_fac = courant_fac / 10.0
         t_end = 4.0
 
     elif prob_id == 3:
@@ -1206,8 +1201,7 @@ def main():
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.8)
             elif prob_id == 2:
-                # plt.imshow(Bz.T, cmap="jet")
-                plt.imshow(By.T, cmap="jet")
+                plt.imshow(Bz.T, cmap="jet")
                 plt.clim(-0.1, 0.1)
             elif prob_id == 3:
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
