@@ -258,29 +258,6 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
 
 
 def dudt_stokes(flux_By_X, flux_Bx_Y, dx):
-    Ez = 0.25 * (
-        -flux_By_X
-        - np.roll(flux_By_X, -1, axis=1)
-        + flux_Bx_Y
-        + np.roll(flux_Bx_Y, -1, axis=0)
-    )
-    dbx, dby = get_curl(-Ez, dx)
-
-    return dbx, dby
-
-
-def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
-    """
-    Apply fluxes to face-centered magnetic fields in a constrained transport manner
-    bx        is matrix of cell face x-component magnetic-field
-    by        is matrix of cell face y-component magnetic-field
-    flux_By_X is a matrix of the x-dir fluxes of By
-    flux_Bx_Y is a matrix of the y-dir fluxes of Bx
-    dx        is the cell size
-    dt        is the timestep
-    """
-
-    # update solution
     # Ez at top right node of cell = avg of 4 fluxes
     Ez = 0.25 * (
         -flux_By_X
@@ -290,10 +267,7 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
     )
     dbx, dby = get_curl(-Ez, dx)
 
-    bx += dt * dbx
-    by += dt * dby
-
-    return bx, by
+    return dbx, dby
 
 
 def apply_dudt(F, dudt, dt):
@@ -1028,9 +1002,11 @@ def main():
         # Circularly polarized Alfven wave
         rho = np.ones(X.shape)
         P = 0.1 * np.ones(X.shape)  # init. gas pressure
+        amp = 0.1
+        t_end = 4.0
+
         alpha = np.pi / 4.0
         Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2.0)
-
         v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
         v_par = np.zeros(X.shape)
         # b_perp = 0.1 * np.sin(2.0*np.pi*Xpar)
@@ -1043,12 +1019,10 @@ def main():
         # simplified ICs
         # TODO: switch to using the above ones instead XXX
         vx = np.zeros(X.shape)
-        vy = 0.1 * np.sin(2.0 * np.pi * X)
-        vz = 0.1 * np.cos(2.0 * np.pi * X)
-        Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
-        Bz = 0.1 * np.cos(2.0 * np.pi * X)
-
-        t_end = 4.0
+        vy = amp * np.sin(2.0 * np.pi * X)
+        vz = amp * np.cos(2.0 * np.pi * X)
+        Az = amp / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
+        Bz = amp * np.cos(2.0 * np.pi * X)
 
     elif prob_id == 3:
         # Magnetic Field Loop Test
@@ -1082,8 +1056,8 @@ def main():
     dt_sav = []
 
     # prep figure
-    fig = plt.figure(figsize=(4, 4), dpi=80)
-    outputCount = 1
+    plt.figure(figsize=(4, 4), dpi=80)
+    out_count = 1
 
     # Simulation Main Loop
     while t < t_end:
@@ -1107,10 +1081,10 @@ def main():
         dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
         u_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
 
-        plotThisTurn = False
-        if t + dt > outputCount * t_out:
-            # dt = outputCount*t_out - t
-            plotThisTurn = True
+        plot_this_turn = False
+        if t + dt > out_count * t_out:
+            # dt = out_count*t_out - t
+            plot_this_turn = True
 
         # first RK stage
         (
@@ -1193,7 +1167,7 @@ def main():
         )
 
         # plot in real time
-        if (plot_in_real_time and plotThisTurn) or (t >= t_end):
+        if (plot_in_real_time and plot_this_turn) or (t >= t_end):
             plt.cla()
             # plt.imshow(rho.T, cmap='jet')
             # plt.clim(0.06, 0.5)
@@ -1212,7 +1186,7 @@ def main():
             ax.get_yaxis().set_visible(False)
             ax.set_aspect("equal")
             plt.pause(0.001)
-            outputCount += 1
+            out_count += 1
 
     print("done!")
 
