@@ -3,21 +3,21 @@ import numpy as np
 import sys
 
 """
-Create Your Own Constrained Transport Magnetohydrodynamics Simulation (With Python)
+2.5D Constrained Transport Magnetohydrodynamics
 Philip Mocz (2024), @PMocz
 
 Simulate the Orszag-Tang vortex MHD problem
 
-with Boris Integrator to control timesteps!
+with a Boris-like Integrator to control timesteps!
 
 The original problem has cf_max ~ 1.9, u_max ~ 1.6
 
 """
 
 
-def getCurl(Az, dx):
+def get_curl(Az, dx):
     """
-      Calculate the discrete curl
+    Calculate the discrete curl
     Az       is matrix of nodal z-component of magnetic potential
     dx       is the cell size
     bx       is matrix of cell face x-component magnetic-field
@@ -33,10 +33,10 @@ def getCurl(Az, dx):
     return bx, by
 
 
-def getDiv(bx, by, dx):
+def get_div(bx, by, dx):
     """
-      Calculate the discrete curl of each cell
-      dx       is the cell size
+    Calculate the discrete curl of each cell
+    dx       is the cell size
     bx       is matrix of cell face x-component magnetic-field
     by       is matrix of cell face y-component magnetic-field
     """
@@ -49,9 +49,9 @@ def getDiv(bx, by, dx):
     return divB
 
 
-def getBavg(bx, by):
+def get_Bavg(bx, by):
     """
-      Calculate the volume-averaged magnetic field
+    Calculate the volume-averaged magnetic field
     bx       is matrix of cell face x-component magnetic-field
     by       is matrix of cell face y-component magnetic-field
     Bx       is matrix of cell Bx
@@ -67,9 +67,9 @@ def getBavg(bx, by):
     return Bx, By
 
 
-def getConserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
+def get_conserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
     """
-      Calculate the conserved variable from the primitive
+    Calculate the conserved variable from the primitive
     rho      is matrix of cell densities
     vx       is matrix of cell x-velocity
     vy       is matrix of cell y-velocity
@@ -96,9 +96,9 @@ def getConserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
     return Mass, Momx, Momy, Momz, Energy
 
 
-def getPrimitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit):
+def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit):
     """
-      Calculate the primitive variable from the conservative
+    Calculate the primitive variable from the conservative
     Mass     is matrix of mass in cells
     Momx     is matrix of x-momentum in cells
     Momy     is matrix of y-momentum in cells
@@ -134,9 +134,9 @@ def getPrimitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limi
     return rho, vx, vy, vz, P
 
 
-def getGradient(f, dx):
+def get_gradient(f, dx):
     """
-      Calculate the gradients of a field
+    Calculate the gradients of a field
     f        is a matrix of the field
     dx       is the cell size
     f_dx     is a matrix of derivative of f in the x-direction
@@ -152,9 +152,9 @@ def getGradient(f, dx):
     return f_dx, f_dy
 
 
-def slopeLimit(f, dx, f_dx, f_dy):
+def slope_limit(f, dx, f_dx, f_dy):
     """
-      Apply slope limiter to slopes
+    Apply slope limiter to slopes
     f        is a matrix of the field
     dx       is the cell size
     f_dx     is a matrix of derivative of f in the x-direction
@@ -204,9 +204,9 @@ def slopeLimit(f, dx, f_dx, f_dy):
     return f_dx, f_dy
 
 
-def extrapolateInSpaceToFace(f, f_dx, f_dy, dx):
+def extrapolate_in_space_to_face(f, f_dx, f_dy, dx):
     """
-      Calculate the gradients of a field
+    Calculate the gradients of a field
     f        is a matrix of the field
     f_dx     is a matrix of the field x-derivatives
     f_dy     is a matrix of the field y-derivatives
@@ -231,9 +231,9 @@ def extrapolateInSpaceToFace(f, f_dx, f_dy, dx):
     return f_XL, f_XR, f_YL, f_YR
 
 
-def applyFluxes(F, flux_F_X, flux_F_Y, dx, dt):
+def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
     """
-      Apply fluxes to conserved variables
+    Apply fluxes to conserved variables
     F        is a matrix of the conserved variable field
     flux_F_X is a matrix of the x-dir fluxes
     flux_F_Y is a matrix of the y-dir fluxes
@@ -253,9 +253,9 @@ def applyFluxes(F, flux_F_X, flux_F_Y, dx, dt):
     return F
 
 
-def constrainedTransport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
+def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
     """
-      Apply fluxes to face-centered magnetic fields in a constrained transport manner
+    Apply fluxes to face-centered magnetic fields in a constrained transport manner
     bx        is matrix of cell face x-component magnetic-field
     by        is matrix of cell face y-component magnetic-field
     flux_By_X is a matrix of the x-dir fluxes of By
@@ -275,7 +275,7 @@ def constrainedTransport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
         + flux_Bx_Y
         + np.roll(flux_Bx_Y, R, axis=0)
     )
-    dbx, dby = getCurl(-Ez, dx)
+    dbx, dby = get_curl(-Ez, dx)
 
     bx += dt * dbx
     by += dt * dby
@@ -304,7 +304,7 @@ def getFlux(
     cf_limit,
 ):
     """
-      Calculate fluxed between 2 states with local Lax-Friedrichs/Rusanov rule
+    Calculate fluxed between 2 states with local Lax-Friedrichs/Rusanov rule
     rho_L        is a matrix of left-state  density
     rho_R        is a matrix of right-state density
     vx_L         is a matrix of left-state  x-velocity
@@ -463,7 +463,7 @@ def main():
         vz = 0.1 * np.cos(2.0 * np.pi * Xpar)
         Bz = 0.1 * np.cos(2.0 * np.pi * Xpar)
 
-        # bx, by = getCurl(Az, dx)
+        # bx, by = get_curl(Az, dx)
         # plt.imshow(vx.T, cmap='jet')
         # plt.show()
         # XXX
@@ -497,14 +497,14 @@ def main():
         print("Problem ID not recognized")
         return
 
-    bx, by = getCurl(Az, dx)
-    Bx, By = getBavg(bx, by)
+    bx, by = get_curl(Az, dx)
+    Bx, By = get_Bavg(bx, by)
 
     # add magnetic pressure to get the total pressure
     P = P + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     # Get conserved variables
-    Mass, Momx, Momy, Momz, Energy = getConserved(
+    Mass, Momx, Momy, Momz, Energy = get_conserved(
         rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol
     )
 
@@ -519,8 +519,8 @@ def main():
     while t < tEnd:
 
         # get Primitive variables
-        Bx, By = getBavg(bx, by)
-        rho, vx, vy, vz, P = getPrimitive(
+        Bx, By = get_Bavg(bx, by)
+        rho, vx, vy, vz, P = get_primitive(
             Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
         )
 
@@ -543,25 +543,25 @@ def main():
             plotThisTurn = True
 
         # calculate gradients
-        rho_dx, rho_dy = getGradient(rho, dx)
-        vx_dx, vx_dy = getGradient(vx, dx)
-        vy_dx, vy_dy = getGradient(vy, dx)
-        vz_dx, vz_dy = getGradient(vz, dx)
-        P_dx, P_dy = getGradient(P, dx)
-        Bx_dx, Bx_dy = getGradient(Bx, dx)
-        By_dx, By_dy = getGradient(By, dx)
-        Bz_dx, Bz_dy = getGradient(Bz, dx)
+        rho_dx, rho_dy = get_gradient(rho, dx)
+        vx_dx, vx_dy = get_gradient(vx, dx)
+        vy_dx, vy_dy = get_gradient(vy, dx)
+        vz_dx, vz_dy = get_gradient(vz, dx)
+        P_dx, P_dy = get_gradient(P, dx)
+        Bx_dx, Bx_dy = get_gradient(Bx, dx)
+        By_dx, By_dy = get_gradient(By, dx)
+        Bz_dx, Bz_dy = get_gradient(Bz, dx)
 
         # slope limit gradients
         if useSlopeLimiting:
-            rho_dx, rho_dy = slopeLimit(rho, dx, rho_dx, rho_dy)
-            vx_dx, vx_dy = slopeLimit(vx, dx, vx_dx, vx_dy)
-            vy_dx, vy_dy = slopeLimit(vy, dx, vy_dx, vy_dy)
-            vz_dx, vz_dy = slopeLimit(vz, dx, vz_dx, vz_dy)
-            P_dx, P_dy = slopeLimit(P, dx, P_dx, P_dy)
-            Bx_dx, Bx_dy = slopeLimit(Bx, dx, Bx_dx, Bx_dy)
-            By_dx, By_dy = slopeLimit(By, dx, By_dx, By_dy)
-            Bz_dx, Bz_dy = slopeLimit(Bz, dx, Bz_dx, Bz_dy)
+            rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
+            vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
+            vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
+            vz_dx, vz_dy = slope_limit(vz, dx, vz_dx, vz_dy)
+            P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
+            Bx_dx, Bx_dy = slope_limit(Bx, dx, Bx_dx, Bx_dy)
+            By_dx, By_dy = slope_limit(By, dx, By_dx, By_dy)
+            Bz_dx, Bz_dy = slope_limit(Bz, dx, Bz_dx, Bz_dy)
 
         # extrapolate rho half-step in time
         rho_prime = rho - 0.5 * dt * (
@@ -614,26 +614,26 @@ def main():
         )
 
         # extrapolate in space to face centers
-        rho_XL, rho_XR, rho_YL, rho_YR = extrapolateInSpaceToFace(
+        rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_in_space_to_face(
             rho_prime, rho_dx, rho_dy, dx
         )
-        vx_XL, vx_XR, vx_YL, vx_YR = extrapolateInSpaceToFace(
+        vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_in_space_to_face(
             vx_prime, vx_dx, vx_dy, dx
         )
-        vy_XL, vy_XR, vy_YL, vy_YR = extrapolateInSpaceToFace(
+        vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_in_space_to_face(
             vy_prime, vy_dx, vy_dy, dx
         )
-        vz_XL, vz_XR, vz_YL, vz_YR = extrapolateInSpaceToFace(
+        vz_XL, vz_XR, vz_YL, vz_YR = extrapolate_in_space_to_face(
             vz_prime, vz_dx, vz_dy, dx
         )
-        P_XL, P_XR, P_YL, P_YR = extrapolateInSpaceToFace(P_prime, P_dx, P_dy, dx)
-        Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolateInSpaceToFace(
+        P_XL, P_XR, P_YL, P_YR = extrapolate_in_space_to_face(P_prime, P_dx, P_dy, dx)
+        Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_in_space_to_face(
             Bx_prime, Bx_dx, Bx_dy, dx
         )
-        By_XL, By_XR, By_YL, By_YR = extrapolateInSpaceToFace(
+        By_XL, By_XR, By_YL, By_YR = extrapolate_in_space_to_face(
             By_prime, By_dx, By_dy, dx
         )
-        Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolateInSpaceToFace(
+        Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolate_in_space_to_face(
             Bz_prime, Bz_dx, Bz_dy, dx
         )
 
@@ -696,13 +696,13 @@ def main():
         )
 
         # update solution
-        Mass = applyFluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dt)
-        Momx = applyFluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dt)
-        Momy = applyFluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
-        Momz = applyFluxes(Momz, flux_Momz_X, flux_Momz_Y, dx, dt)
-        Energy = applyFluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
-        Bz = applyFluxes(Bz, flux_Bz_X, flux_Bz_Y, dx / vol, dt)
-        bx, by = constrainedTransport(bx, by, flux_By_X, flux_Bx_Y, dx, dt)
+        Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dt)
+        Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dt)
+        Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
+        Momz = apply_fluxes(Momz, flux_Momz_X, flux_Momz_Y, dx, dt)
+        Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
+        Bz = apply_fluxes(Bz, flux_Bz_X, flux_Bz_Y, dx / vol, dt)
+        bx, by = constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt)
 
         # update time
         t += dt
@@ -711,18 +711,18 @@ def main():
         dt_sav.append(dt)
 
         # check div B
-        divB = getDiv(bx, by, dx)
+        divB = get_div(bx, by, dx)
         print(
-            "t = ",
-            t,
+            "t =",
+            f"{t:.4f}",
             "max_cf=",
-            max_cf,
+            f"{max_cf:.4f}",
             "u_max=",
-            u_max,
+            f"{u_max:.4f}",
             "alpha=",
-            np.min(alpha),
+            f"{np.min(alpha):.4f}",
             ", mean |divB| = ",
-            np.mean(np.abs(divB)),
+            f"{np.mean(np.abs(divB)):.4f}",
         )
 
         # plot in real time
@@ -756,8 +756,8 @@ def main():
     # plt.show()
 
     # Save rho, P_B, v, vA, cf, and dt_sav
-    Bx, By = getBavg(bx, by)
-    rho, vx, vy, vz, P = getPrimitive(
+    Bx, By = get_Bavg(bx, by)
+    rho, vx, vy, vz, P = get_primitive(
         Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
     )
     P_B = 0.5 * np.sqrt(Bx**2 + By**2 + Bz**2)
