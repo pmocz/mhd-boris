@@ -261,7 +261,7 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
     return bx, by
 
 
-def getFlux(
+def get_flux(
     rho_L,
     rho_R,
     vx_L,
@@ -623,7 +623,7 @@ def main():
             flux_Energy_X,
             flux_By_X,
             flux_Bz_X,
-        ) = getFlux(
+        ) = get_flux(
             rho_XL,
             rho_XR,
             vx_XL,
@@ -651,7 +651,7 @@ def main():
             flux_Energy_Y,
             flux_Bx_Y,
             flux_Bz_Y,
-        ) = getFlux(
+        ) = get_flux(
             rho_YL,
             rho_YR,
             vy_YL,
