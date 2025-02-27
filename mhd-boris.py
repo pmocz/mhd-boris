@@ -517,7 +517,6 @@ def main():
 
     # Simulation Main Loop
     while t < tEnd:
-
         # get Primitive variables
         Bx, By = get_Bavg(bx, by)
         rho, vx, vy, vz, P = get_primitive(
