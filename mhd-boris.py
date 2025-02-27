@@ -297,7 +297,6 @@ def apply_dudt(F, dudt, dt):
 
 
 # HLLD (adapted from Athena)
-# TODO: test and debug
 def get_flux_hlld(
     rho_L,
     rho_R,
@@ -410,7 +409,7 @@ def get_flux_hlld(
     #  Return upwind flux if flow is supersonic
     #
 
-    # deferred for the end
+    # deferred to the end
 
     # --- Step 5. ------------------------------------------------------------------
     #  Compute middle and Alfven wave speeds
