@@ -7,12 +7,14 @@ import sys
 Philip Mocz (2024), @PMocz
 
 Simulate the Orszag-Tang vortex MHD problem
-
 with a Boris-like Integrator to control timesteps!
 
 The original problem has cf_max ~ 1.9, u_max ~ 1.6
-
 """
+
+# directions for np.roll()
+R = -1  # right/up
+L = 1  # left/down
 
 
 def get_curl(Az, dx):
@@ -23,9 +25,6 @@ def get_curl(Az, dx):
     bx       is matrix of cell face x-component magnetic-field
     by       is matrix of cell face y-component magnetic-field
     """
-    # directions for np.roll()
-    R = -1  # right/up
-    L = 1  # left/down
 
     bx = (Az - np.roll(Az, L, axis=1)) / dx  # = d Az / d y
     by = -(Az - np.roll(Az, L, axis=0)) / dx  # =-d Az / d x
@@ -40,16 +39,13 @@ def get_div(bx, by, dx):
     bx       is matrix of cell face x-component magnetic-field
     by       is matrix of cell face y-component magnetic-field
     """
-    # directions for np.roll()
-    R = -1  # right/up
-    L = 1  # left/down
 
     divB = (bx - np.roll(bx, L, axis=0) + by - np.roll(by, L, axis=1)) / dx
 
     return divB
 
 
-def get_Bavg(bx, by):
+def get_B_avg(bx, by):
     """
     Calculate the volume-averaged magnetic field
     bx       is matrix of cell face x-component magnetic-field
@@ -57,9 +53,6 @@ def get_Bavg(bx, by):
     Bx       is matrix of cell Bx
     By       is matrix of cell By
     """
-    # directions for np.roll()
-    R = -1  # right/up
-    L = 1  # left/down
 
     Bx = 0.5 * (bx + np.roll(bx, L, axis=0))
     By = 0.5 * (by + np.roll(by, L, axis=1))
@@ -88,7 +81,7 @@ def get_conserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
     Momy = rho * vy * vol
     Momz = rho * vz * vol
     Energy = (
-        (P - 0.5 * (Bx**2 + By**2 + Bz**2)) / (gamma - 1)
+        (P - 0.5 * (Bx**2 + By**2 + Bz**2)) / (gamma - 1.0)
         + 0.5 * rho * (vx**2 + vy**2 + vz**2)
         + 0.5 * (Bx**2 + By**2 + Bz**2)
     ) * vol
@@ -142,12 +135,9 @@ def get_gradient(f, dx):
     f_dx     is a matrix of derivative of f in the x-direction
     f_dy     is a matrix of derivative of f in the y-direction
     """
-    # directions for np.roll()
-    R = -1  # right
-    L = 1  # left
 
-    f_dx = (np.roll(f, R, axis=0) - np.roll(f, L, axis=0)) / (2 * dx)
-    f_dy = (np.roll(f, R, axis=1) - np.roll(f, L, axis=1)) / (2 * dx)
+    f_dx = (np.roll(f, R, axis=0) - np.roll(f, L, axis=0)) / (2.0 * dx)
+    f_dy = (np.roll(f, R, axis=1) - np.roll(f, L, axis=1)) / (2.0 * dx)
 
     return f_dx, f_dy
 
@@ -160,9 +150,6 @@ def slope_limit(f, dx, f_dx, f_dy):
     f_dx     is a matrix of derivative of f in the x-direction
     f_dy     is a matrix of derivative of f in the y-direction
     """
-    # directions for np.roll()
-    R = -1  # right
-    L = 1  # left
 
     f_dx = (
         np.maximum(
@@ -216,17 +203,14 @@ def extrapolate_in_space_to_face(f, f_dx, f_dy, dx):
     f_YL     is a matrix of spatial-extrapolated values on `left' face along y-axis
     f_YR     is a matrix of spatial-extrapolated values on `right' face along y-axis
     """
-    # directions for np.roll()
-    R = -1  # right
-    L = 1  # left
 
-    f_XL = f - f_dx * dx / 2
+    f_XL = f - f_dx * dx / 2.0
     f_XL = np.roll(f_XL, R, axis=0)
-    f_XR = f + f_dx * dx / 2
+    f_XR = f + f_dx * dx / 2.0
 
-    f_YL = f - f_dy * dx / 2
+    f_YL = f - f_dy * dx / 2.0
     f_YL = np.roll(f_YL, R, axis=1)
-    f_YR = f + f_dy * dx / 2
+    f_YR = f + f_dy * dx / 2.0
 
     return f_XL, f_XR, f_YL, f_YR
 
@@ -240,9 +224,6 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
     dx       is the cell size
     dt       is the timestep
     """
-    # directions for np.roll()
-    R = -1  # right
-    L = 1  # left
 
     # update solution
     F += -dt * dx * flux_F_X
@@ -263,9 +244,6 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
     dx        is the cell size
     dt        is the timestep
     """
-    # directions for np.roll()
-    R = -1  # right
-    L = 1  # left
 
     # update solution
     # Ez at top right node of cell = avg of 4 fluxes
@@ -419,9 +397,9 @@ def main():
     # Simulation parameters
     N = 128  # resolution
     boxsize = 1.0
-    gamma = 5 / 3  # ideal gas gamma
+    gamma = 5.0 / 3.0  # ideal gas gamma
     courant_fac = 0.4
-    t = 0
+    t = 0.0
     tEnd = 0.5
     tOut = 0.01  # draw frequency
     useSlopeLimiting = True
@@ -438,14 +416,14 @@ def main():
     # Generate Initial Conditions:
     if prob_id == 1:
         # Orszag-Tang vortex problem
-        rho = (gamma**2 / (4 * np.pi)) * np.ones(X.shape)
-        vx = -np.sin(2 * np.pi * Y)
-        vy = np.sin(2 * np.pi * X)
-        P = (gamma / (4 * np.pi)) * np.ones(X.shape)  # init. gas pressure
+        rho = (gamma**2 / (4.0 * np.pi)) * np.ones(X.shape)
+        vx = -np.sin(2.0 * np.pi * Y)
+        vy = np.sin(2.0 * np.pi * X)
+        P = (gamma / (4.0 * np.pi)) * np.ones(X.shape)  # init. gas pressure
         # (Az is at top-right node of each cell)
-        Az = np.cos(4 * np.pi * X) / (4 * np.pi * np.sqrt(4 * np.pi)) + np.cos(
-            2 * np.pi * Y
-        ) / (2 * np.pi * np.sqrt(4 * np.pi))
+        Az = np.cos(4.0 * np.pi * X) / (4.0 * np.pi * np.sqrt(4.0 * np.pi)) + np.cos(
+            2.0 * np.pi * Y
+        ) / (2.0 * np.pi * np.sqrt(4.0 * np.pi))
         vz = np.zeros(X.shape)
         Bz = np.zeros(X.shape)
     elif prob_id == 2:
@@ -453,7 +431,7 @@ def main():
         rho = np.ones(X.shape)
         P = 0.1 * np.ones(X.shape)  # init. gas pressure
         alpha = np.pi / 4.0
-        Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2)
+        Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2.0)
         v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
         v_par = np.zeros(X.shape)
         # b_perp = 0.1 * np.sin(2.0*np.pi*Xpar)
@@ -484,8 +462,8 @@ def main():
         # Magnetic Field Loop Test
         rho = np.ones(X.shape)
         P = np.ones(X.shape)
-        vx = np.ones(X.shape) * np.sin(np.pi / 3)
-        vy = np.ones(X.shape) * np.cos(np.pi / 3)
+        vx = np.ones(X.shape) * np.sin(np.pi / 3.0)
+        vy = np.ones(X.shape) * np.cos(np.pi / 3.0)
         vz = np.zeros(X.shape)
         Bz = np.ones(X.shape)
         anorm = 1.0e-3
@@ -498,7 +476,7 @@ def main():
         return
 
     bx, by = get_curl(Az, dx)
-    Bx, By = get_Bavg(bx, by)
+    Bx, By = get_B_avg(bx, by)
 
     # add magnetic pressure to get the total pressure
     P = P + 0.5 * (Bx**2 + By**2 + Bz**2)
@@ -518,7 +496,7 @@ def main():
     # Simulation Main Loop
     while t < tEnd:
         # get Primitive variables
-        Bx, By = get_Bavg(bx, by)
+        Bx, By = get_B_avg(bx, by)
         rho, vx, vy, vz, P = get_primitive(
             Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
         )
@@ -755,7 +733,7 @@ def main():
     # plt.show()
 
     # Save rho, P_B, v, vA, cf, and dt_sav
-    Bx, By = get_Bavg(bx, by)
+    Bx, By = get_B_avg(bx, by)
     rho, vx, vy, vz, P = get_primitive(
         Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
     )
