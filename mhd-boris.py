@@ -400,10 +400,10 @@ def main():
     gamma = 5.0 / 3.0  # ideal gas gamma
     courant_fac = 0.4
     t = 0.0
-    tEnd = 0.5
-    tOut = 0.01  # draw frequency
-    useSlopeLimiting = True
-    plotRealTime = True  # switch on for plotting as the simulation goes along
+    t_end = 0.5
+    t_out = 0.01  # draw frequency
+    use_slope_limiting = True
+    plot_in_real_time = True
 
     # Mesh
     dx = boxsize / N
@@ -456,7 +456,7 @@ def main():
         Bz = 0.1 * np.cos(2.0 * np.pi * X)
 
         courant_fac = courant_fac / 10.0
-        tEnd = 4.0
+        t_end = 4.0
 
     elif prob_id == 3:
         # Magnetic Field Loop Test
@@ -494,7 +494,7 @@ def main():
     outputCount = 1
 
     # Simulation Main Loop
-    while t < tEnd:
+    while t < t_end:
         # get Primitive variables
         Bx, By = get_B_avg(bx, by)
         rho, vx, vy, vz, P = get_primitive(
@@ -515,8 +515,8 @@ def main():
         u_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
 
         plotThisTurn = False
-        if t + dt > outputCount * tOut:
-            # dt = outputCount*tOut - t
+        if t + dt > outputCount * t_out:
+            # dt = outputCount*t_out - t
             plotThisTurn = True
 
         # calculate gradients
@@ -530,7 +530,7 @@ def main():
         Bz_dx, Bz_dy = get_gradient(Bz, dx)
 
         # slope limit gradients
-        if useSlopeLimiting:
+        if use_slope_limiting:
             rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
             vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
             vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
@@ -690,20 +690,22 @@ def main():
         # check div B
         divB = get_div(bx, by, dx)
         print(
-            "t =",
+            "t=",
             f"{t:.4f}",
-            "max_cf=",
+            " max_cf =",
             f"{max_cf:.4f}",
-            "u_max=",
+            " u_max=",
             f"{u_max:.4f}",
-            "alpha=",
+            " alpha=",
             f"{np.min(alpha):.4f}",
-            ", mean |divB| = ",
+            " mean(|divB|)=",
             f"{np.mean(np.abs(divB)):.4f}",
+            " mean(|Bz|)=",
+            f"{np.mean(np.abs(Bz)):.4f}",
         )
 
         # plot in real time
-        if (plotRealTime and plotThisTurn) or (t >= tEnd):
+        if (plot_in_real_time and plotThisTurn) or (t >= t_end):
             plt.cla()
             # plt.imshow(rho.T, cmap='jet')
             # plt.clim(0.06, 0.5)
