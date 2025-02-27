@@ -124,7 +124,7 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_lim
         Energy / vol
         - 0.5 * rho * (vx**2 + vy**2 + vz**2)
         - 0.5 * (Bx**2 + By**2 + Bz**2)
-    ) * (gamma - 1) + 0.5 * (Bx**2 + By**2 + Bz**2)
+    ) * (gamma - 1.0) + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     # Try 2: apply boris factor in recovering the velocity
     # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
@@ -1042,13 +1042,13 @@ def main():
         # XXX
 
         # simplified ICs XXX
-        vx = np.zeros(X.shape)
-        vy = 0.1 * np.sin(2.0 * np.pi * X)
-        vz = 0.1 * np.cos(2.0 * np.pi * X)
-        Ax = np.zeros(X.shape)
-        Ay = 0.1 / (2.0 * np.pi) * np.sin(2.0 * np.pi * X)
-        Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
-        Bz = 0.1 * np.cos(2.0 * np.pi * X)
+        # vx = np.zeros(X.shape)
+        # vy = 0.1 * np.sin(2.0 * np.pi * X)
+        # vz = 0.1 * np.cos(2.0 * np.pi * X)
+        # Ax = np.zeros(X.shape)
+        # Ay = 0.1 / (2.0 * np.pi) * np.sin(2.0 * np.pi * X)
+        # Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
+        # Bz = 0.1 * np.cos(2.0 * np.pi * X)
 
         courant_fac = courant_fac / 10.0
         t_end = 4.0
@@ -1060,7 +1060,7 @@ def main():
         vx = np.ones(X.shape) * np.sin(np.pi / 3.0)
         vy = np.ones(X.shape) * np.cos(np.pi / 3.0)
         vz = np.zeros(X.shape)
-        Bz = np.ones(X.shape)
+        Bz = np.zeros(X.shape)
         anorm = 1.0e-3
         r0 = 0.3
         r = np.sqrt((X - 0.5) ** 2 + (Y - 0.5) ** 2)
@@ -1204,10 +1204,10 @@ def main():
                 plt.clim(0.0, 0.8)
             elif prob_id == 2:
                 plt.imshow(Bz.T, cmap="jet")
-                # XXXplt.clim(0.0, 0.8)
+                plt.clim(-0.1, 0.1)
             elif prob_id == 3:
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
-                # XXXplt.clim(0.0, 0.8)
+                plt.clim(0.0, 0.0011)
             ax = plt.gca()
             ax.invert_yaxis()
             ax.get_xaxis().set_visible(False)

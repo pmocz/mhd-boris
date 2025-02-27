@@ -4,14 +4,14 @@
 Philip Mocz (2024), [@PMocz](https://twitter.com/PMocz)
 
 Based on 
-[📝 Read the Algorithm Write-up on Medium](https://levelup.gitconnected.com/create-your-own-constrained-transport-magnetohydrodynamics-simulation-with-python-276f787f537d)
+[algorithm write-up on Medium](https://levelup.gitconnected.com/create-your-own-constrained-transport-magnetohydrodynamics-simulation-with-python-276f787f537d)
 
 See also: https://arxiv.org/abs/1902.02810
 
 Simulate the Orszag-Tang vortex MHD problem
 with the Boris-like Integrator
 
-Run the simulations and produce analysis with:
+Run the simulations (`python mhd-boris.py <prob_id> <cf_max>`) and produce analysis with:
 
 ```bash
 python mhd-boris.py 1 2.0
@@ -25,7 +25,7 @@ python analysis.py
 ```
 
 
-## Orszag-Tang
+## 1. Orszag-Tang
 
 Timesteps:
 
@@ -53,6 +53,7 @@ Fast Speed:
 ![Analysis6](./p1_cf.png)
 
 
-## Alfven Wave
+## 2. Alfven Wave
 
+## 3. Advect Field Loop
 
