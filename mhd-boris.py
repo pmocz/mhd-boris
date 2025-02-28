@@ -11,7 +11,7 @@ Adam Reyes
 Simulate the Orszag-Tang vortex MHD problem (+more)
 with a Boris-like Integrator to control timesteps!
 
-The original problem has cf_max ~ 1.9, u_max ~ 1.6
+The original problem has cf_max ~ 1.9, v_max ~ 1.6
 """
 
 # Simulation parameters (global)
@@ -818,7 +818,7 @@ def get_flux(
         raise ValueError(f"Unknown method {method}")
 
 
-def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
+def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, cf_limit):
     """single stage of a runge-kutta method to return dudt of all these variables"""
     Bx, By = get_avg(bx, by)
 
@@ -999,7 +999,7 @@ def main():
         Bz = 0.1 * np.cos(2.0 * np.pi * Xpar)
 
         # simplified ICs
-        # TODO: switch to using the above ones instead XXX
+        # TODO: switch to using the above ones instead
         vx = np.zeros(X.shape)
         vy = amp * np.sin(2.0 * np.pi * X)
         vz = amp * np.cos(2.0 * np.pi * X)
@@ -1018,7 +1018,6 @@ def main():
         r0 = 0.3
         r = np.sqrt((X - 0.5) ** 2 + (Y - 0.5) ** 2)
         Az = np.maximum(anorm * (r0 - r), 0)
-        # courant_fac = courant_fac / 10.0
     else:
         print("Problem ID not recognized")
         return
@@ -1063,11 +1062,10 @@ def main():
         # Try 1
         # cf *= alpha
         dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
-        u_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
+        v_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
 
         plot_this_turn = False
         if t + dt > out_count * t_out:
-            # dt = out_count*t_out - t
             plot_this_turn = True
 
         # first RK stage
@@ -1080,7 +1078,7 @@ def main():
             dudt_Bz,
             dudt_bx,
             dudt_by,
-        ) = get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dx, gamma, cf_limit)
+        ) = get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, cf_limit)
 
         # update solution
         Mass_1 = apply_dudt(Mass, dudt_Mass, dt)
@@ -1116,7 +1114,7 @@ def main():
             dudt_Bz,
             dudt_bx,
             dudt_by,
-        ) = get_dudt(rho, vx, vy, vz, P, bx_1, by_1, Bz, dx, dx, gamma, cf_limit)
+        ) = get_dudt(rho, vx, vy, vz, P, bx_1, by_1, Bz, dx, gamma, cf_limit)
 
         Mass = apply_dudt(Mass, dudt_Mass, 0.5 * dt)
         Momx = apply_dudt(Momx, dudt_Momx, 0.5 * dt)
@@ -1141,7 +1139,7 @@ def main():
             " max_cf =",
             f"{max_cf:.4f}",
             " v_max=",
-            f"{u_max:.4f}",
+            f"{v_max:.4f}",
             " alpha=",
             f"{np.min(alpha):.4f}",
             " mean(|divB|)=",
