@@ -16,8 +16,6 @@ The original problem has cf_max ~ 1.9, v_max ~ 1.6
 
 # Simulation parameters (global)
 N = 128  # resolution
-boxsize = 1.0
-gamma = 5.0 / 3.0  # ideal gas gamma
 courant_fac = 0.4
 t_end = 0.5
 t_out = 0.01  # draw frequency
@@ -672,6 +670,25 @@ def get_flux_llf(
     flux_Energy  is the matrix of energy fluxes
     """
 
+    # find wavespeeds
+    # c0_L = np.sqrt( gamma*(P_L-0.5*(Bx_L**2+By_L**2+Bz_L**2))/rho_L )
+    # c0_R = np.sqrt( gamma*(P_R-0.5*(Bx_R**2+By_R**2+Bz_R**2))/rho_R )
+    c0_L = np.sqrt(
+        gamma * (np.maximum(P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2), 1.0e-16)) / rho_L
+    )
+    c0_R = np.sqrt(
+        gamma * (np.maximum(P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2), 1.0e-16)) / rho_R
+    )
+    ca_L = np.sqrt((Bx_L**2 + By_L**2 + Bz_L**2) / rho_L)
+    ca_R = np.sqrt((Bx_R**2 + By_R**2 + Bz_R**2) / rho_R)
+    cf_L = np.sqrt(c0_L**2 + ca_L**2)
+    cf_R = np.sqrt(c0_R**2 + ca_R**2)
+    # apply boris factor to wave speeds and momentum flux
+    alpha_L = np.minimum(1.0, cf_limit / cf_L)
+    alpha_R = np.minimum(1.0, cf_limit / cf_R)
+    alpha = np.minimum(alpha_L, alpha_R)
+    alphaSq = alpha**2
+
     # left and right energies
     en_L = (
         (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1.0)
@@ -711,29 +728,12 @@ def get_flux_llf(
     flux_By = (By_star * momx_star - Bx_star * momy_star) / rho_star
     flux_Bz = (Bz_star * momx_star - Bx_star * momz_star) / rho_star
 
-    # find wavespeeds
-    # c0_L = np.sqrt( gamma*(P_L-0.5*(Bx_L**2+By_L**2+Bz_L**2))/rho_L )
-    # c0_R = np.sqrt( gamma*(P_R-0.5*(Bx_R**2+By_R**2+Bz_R**2))/rho_R )
-    c0_L = np.sqrt(
-        gamma * (np.maximum(P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2), 1.0e-16)) / rho_L
-    )
-    c0_R = np.sqrt(
-        gamma * (np.maximum(P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2), 1.0e-16)) / rho_R
-    )
-    ca_L = np.sqrt((Bx_L**2 + By_L**2 + Bz_L**2) / rho_L)
-    ca_R = np.sqrt((Bx_R**2 + By_R**2 + Bz_R**2) / rho_R)
-    cf_L = np.sqrt(c0_L**2 + ca_L**2)
-    cf_R = np.sqrt(c0_R**2 + ca_R**2)
-    # apply boris factor to wave speeds and momentum flux
-    # alpha_L = np.minimum(1.0, cf_limit / cf_L)
-    # alpha_R = np.minimum(1.0, cf_limit / cf_R)
-    # alpha = np.minimum(alpha_L, alpha_R)
-    # alphaSq = alpha ** 2
     ## Try 1
     # flux_Momx *= alphaSq
     # flux_Momy *= alphaSq
-    # cf_L *= alpha_L
-    # cf_R *= alpha_R
+    # flux_Momz *= alphaSq
+    # cf_L *= alpha
+    # cf_R *= alpha
 
     C_L = cf_L + np.abs(vx_L)
     C_R = cf_R + np.abs(vx_R)
@@ -942,15 +942,13 @@ def main():
         return
 
     # Parse command line argument
-    # problem id & fast speed limit for boris integrator (e.g. try 1.0, 1.5, 2.0)
+    # problem id & fast speed limit for boris integrator (e.g. 1.0, 1.5, 2.0)
     prob_id = int(sys.argv[1])
     cf_limit = float(sys.argv[2])
 
     t = 0.0
     global \
         N, \
-        boxsize, \
-        gamma, \
         courant_fac, \
         t_end, \
         t_out, \
@@ -959,6 +957,7 @@ def main():
         plot_in_real_time
 
     # Mesh
+    boxsize = 1.0
     dx = boxsize / N
     vol = dx**2
     xlin = np.linspace(0.5 * dx, boxsize - 0.5 * dx, N)
@@ -967,9 +966,11 @@ def main():
     # Xn, Yn = np.meshgrid( xlin_node, xlin_node, indexing="ij" )
 
     # Generate Initial Conditions:
+    gamma = 5.0 / 3.0  # ideal gas gamma
     if prob_id == 1:
         # Orszag-Tang vortex problem
-        riemann_solver = "hlld"
+        # riemann_solver = "hlld"
+        t_end = 0.5
         rho = (gamma**2 / (4.0 * np.pi)) * np.ones(X.shape)
         vx = -np.sin(2.0 * np.pi * Y)
         vy = np.sin(2.0 * np.pi * X)
@@ -985,7 +986,7 @@ def main():
         rho = np.ones(X.shape)
         P = 0.1 * np.ones(X.shape)  # init. gas pressure
         amp = 0.1
-        t_end = 4.0
+        t_end = 5.0
 
         alpha = np.pi / 4.0
         Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2.0)
@@ -1008,6 +1009,7 @@ def main():
 
     elif prob_id == 3:
         # Magnetic Field Loop Test
+        t_end = 1.0
         rho = np.ones(X.shape)
         P = np.ones(X.shape)
         vx = np.ones(X.shape) * np.sin(np.pi / 3.0)
@@ -1157,16 +1159,19 @@ def main():
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.8)
             elif prob_id == 2:
-                plt.imshow(Bz.T, cmap="jet")
-                plt.clim(-0.1, 0.1)
+                # plt.imshow(Bz.T, cmap="jet")
+                # plt.clim(-0.1, 0.1)
+                plt.plot(Bz[:, N // 2])
+                plt.ylim(-0.2, 0.2)
             elif prob_id == 3:
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.0011)
             ax = plt.gca()
-            ax.invert_yaxis()
-            ax.get_xaxis().set_visible(False)
-            ax.get_yaxis().set_visible(False)
-            ax.set_aspect("equal")
+            if prob_id != 2:
+                ax.invert_yaxis()
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+                ax.set_aspect("equal")
             plt.pause(0.001)
             out_count += 1
 
@@ -1191,6 +1196,7 @@ def main():
     cf = np.sqrt(c0**2 + ca**2)
     np.save(prefix + "data_rho_" + str(cf_limit) + ".npy", rho.T)
     np.save(prefix + "data_P_B_" + str(cf_limit) + ".npy", P_B.T)
+    np.save(prefix + "data_Bz_" + str(cf_limit) + ".npy", Bz.T)
     np.save(prefix + "data_v_" + str(cf_limit) + ".npy", v.T)
     np.save(prefix + "data_ca_" + str(cf_limit) + ".npy", ca.T)
     np.save(prefix + "data_cf_" + str(cf_limit) + ".npy", cf.T)

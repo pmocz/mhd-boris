@@ -13,6 +13,7 @@ def main():
 
         rho = {}
         P_B = {}
+        Bz = {}
         v = {}
         ca = {}
         cf = {}
@@ -26,6 +27,9 @@ def main():
             )
             P_B[cf_limit] = np.load(
                 "output/" + prefix + "data_P_B_" + str(cf_limit) + ".npy"
+            )
+            Bz[cf_limit] = np.load(
+                "output/" + prefix + "data_Bz_" + str(cf_limit) + ".npy"
             )
             v[cf_limit] = np.load(
                 "output/" + prefix + "data_v_" + str(cf_limit) + ".npy"
@@ -47,40 +51,59 @@ def main():
         ca_all = np.hstack([ca[cf_limit] for cf_limit in cf_limits])
         cf_all = np.hstack([cf[cf_limit] for cf_limit in cf_limits])
 
-        plt.figure(figsize=(12, 4))
-        plt.imshow(rho_all, aspect=1, cmap="jet")
-        plt.colorbar()
-        plt.xlabel("cf_max = " + str(cf_limits))
-        plt.savefig(prefix + "rho.png")
-        plt.show()
+        if prob_id == 1:
+            plt.figure(figsize=(12, 4))
+            plt.imshow(rho_all, aspect=1, cmap="jet")
+            plt.colorbar()
+            plt.xlabel("cf_max = " + str(cf_limits))
+            plt.savefig(prefix + "rho.png")
+            plt.show()
 
-        plt.figure(figsize=(12, 4))
-        plt.imshow(P_B_all, aspect=1, cmap="jet")
-        plt.colorbar()
-        plt.xlabel("cf_max = " + str(cf_limits))
-        plt.savefig(prefix + "P_B.png")
-        plt.show()
+            plt.figure(figsize=(12, 4))
+            plt.imshow(P_B_all, aspect=1, cmap="jet")
+            plt.colorbar()
+            plt.xlabel("cf_max = " + str(cf_limits))
+            plt.savefig(prefix + "P_B.png")
+            plt.show()
 
-        plt.figure(figsize=(12, 4))
-        plt.imshow(v_all, aspect=1, cmap="jet")
-        plt.colorbar()
-        plt.xlabel("cf_max = " + str(cf_limits))
-        plt.savefig(prefix + "v.png")
-        plt.show()
+            plt.figure(figsize=(12, 4))
+            plt.imshow(v_all, aspect=1, cmap="jet")
+            plt.colorbar()
+            plt.xlabel("cf_max = " + str(cf_limits))
+            plt.savefig(prefix + "v.png")
+            plt.show()
 
-        plt.figure(figsize=(12, 4))
-        plt.imshow(ca_all, aspect=1, cmap="jet")
-        plt.colorbar()
-        plt.xlabel("cf_max = " + str(cf_limits))
-        plt.savefig(prefix + "ca.png")
-        plt.show()
+            plt.figure(figsize=(12, 4))
+            plt.imshow(ca_all, aspect=1, cmap="jet")
+            plt.colorbar()
+            plt.xlabel("cf_max = " + str(cf_limits))
+            plt.savefig(prefix + "ca.png")
+            plt.show()
 
-        plt.figure(figsize=(12, 4))
-        plt.imshow(cf_all, aspect=1, cmap="jet")
-        plt.colorbar()
-        plt.xlabel("cf_max = " + str(cf_limits))
-        plt.savefig(prefix + "cf.png")
-        plt.show()
+            plt.figure(figsize=(12, 4))
+            plt.imshow(cf_all, aspect=1, cmap="jet")
+            plt.colorbar()
+            plt.xlabel("cf_max = " + str(cf_limits))
+            plt.savefig(prefix + "cf.png")
+            plt.show()
+
+        if prob_id == 2:
+            # plot Bz lineout for each cf_limit
+            plt.figure()
+            N = Bz[cf_limit].shape[0]
+            dx = 1.0 / N
+            xlin = np.linspace(0.5 * dx, 1.0 - 0.5 * dx, N)
+            lim = 0.1 * np.ones(N)
+            for cf_limit in cf_limits:
+                plt.plot(xlin, lim, "k--")
+                plt.plot(xlin, -lim, "k--")
+                plt.plot(xlin, Bz[cf_limit][0, :], label="cf_max = " + str(cf_limit))
+                plt.ylim(-0.18, 0.18)
+            plt.legend(loc="upper left")
+            plt.xlabel("x")
+            plt.ylabel("Bz")
+            plt.savefig(prefix + "Bz.png")
+            plt.show()
 
         # plot the dt for each cf_limit
         plt.figure()

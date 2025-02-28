@@ -66,23 +66,7 @@ Timesteps:
 ![Analysis1](./p2_dt.png)
 
 
-Density:
+Bz lineout at final time:
 
-![Analysis2](./p2_rho.png)
-
-Magnetic Pressure:
-
-![Analysis3](./p2_P_B.png)
-
-Velocity:
-
-![Analysis4](./p2_v.png)
-
-Alfven Speed: 
-
-![Analysis5](./p2_ca.png)
-
-Fast Speed:
-
-![Analysis6](./p2_cf.png)
+![Analysis2](./p2_Bz.png)
 
