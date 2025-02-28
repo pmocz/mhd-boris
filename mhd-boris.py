@@ -918,7 +918,7 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, cf_limit):
     dudt_Momy = dudt_fluxes(flux_Momy_X, flux_Momy_Y, dx)
     dudt_Momz = dudt_fluxes(flux_Momz_X, flux_Momz_Y, dx)
     dudt_Energy = dudt_fluxes(flux_Energy_X, flux_Energy_Y, dx)
-    dudt_Bz = dudt_fluxes(flux_Bz_X, flux_Bz_Y, dx)
+    dudt_Bz = dudt_fluxes(flux_Bz_X, flux_Bz_Y, dx) / dx**2
     dudt_bx, dudt_by = dudt_stokes(flux_By_X, flux_Bx_Y, dx)
 
     return (
