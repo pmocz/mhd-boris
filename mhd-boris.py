@@ -238,25 +238,6 @@ def dudt_fluxes(flux_X, flux_Y, dx):
     return F
 
 
-def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
-    """
-    Apply fluxes to conserved variables
-    F        is a matrix of the conserved variable field
-    flux_F_X is a matrix of the x-dir fluxes
-    flux_F_Y is a matrix of the y-dir fluxes
-    dx       is the cell size
-    dt       is the timestep
-    """
-
-    # update solution
-    F += -dt * dx * flux_F_X
-    F += dt * dx * np.roll(flux_F_X, 1, axis=0)
-    F += -dt * dx * flux_F_Y
-    F += dt * dx * np.roll(flux_F_Y, 1, axis=1)
-
-    return F
-
-
 def dudt_stokes(flux_By_X, flux_Bx_Y, dx):
     # Ez at top right node of cell = avg of 4 fluxes
     Ez = 0.25 * (
@@ -649,6 +630,7 @@ def get_flux_hlld(
     return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
 
 
+# local Lax-Friedrichs/Rusanov
 def get_flux_llf(
     rho_L,
     rho_R,
@@ -872,7 +854,7 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, dy, gamma, cf_limit):
     By_XL, By_XR, By_YL, By_YR = extrapolate_in_space_to_face(By, By_dx, By_dy, dx)
     Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolate_in_space_to_face(Bz, Bz_dx, Bz_dy, dx)
 
-    # compute fluxes (local Lax-Friedrichs/Rusanov)
+    # compute fluxes
     (
         flux_Mass_X,
         flux_Momx_X,
@@ -1158,7 +1140,7 @@ def main():
             f"{t:.4f}",
             " max_cf =",
             f"{max_cf:.4f}",
-            " u_max=",
+            " v_max=",
             f"{u_max:.4f}",
             " alpha=",
             f"{np.min(alpha):.4f}",
