@@ -9,7 +9,7 @@ def main():
         if prob_id == 1:
             cf_limits = [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
         elif prob_id == 2:
-            cf_limits = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1]
+            cf_limits = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2]
 
         rho = {}
         P_B = {}

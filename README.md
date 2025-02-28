@@ -21,13 +21,12 @@ python mhd-boris.py 1 1.4
 python mhd-boris.py 1 1.2
 python mhd-boris.py 1 1.0
 python mhd-boris.py 1 0.8
-python mhd-boris.py 2 1.1
+python mhd-boris.py 2 1.2
 python mhd-boris.py 2 1.0
-python mhd-boris.py 2 0.9
 python mhd-boris.py 2 0.8
-python mhd-boris.py 2 0.7
 python mhd-boris.py 2 0.6
-python mhd-boris.py 2 0.5
+python mhd-boris.py 2 0.4
+python mhd-boris.py 2 0.2
 python analysis.py
 ```
 
