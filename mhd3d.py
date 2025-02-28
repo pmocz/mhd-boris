@@ -678,6 +678,7 @@ def main():
     Az = 0.1 / (2.0 * jnp.pi) * jnp.cos(2.0 * jnp.pi * X)
 
     bx, by, bz = get_curl(Ax, Ay, Az, dx)
+    bx = jnp.ones(X.shape)
 
     Bx, By, Bz = get_avg(bx, by, bz)
     # add magnetic pressure to get the total pressure

@@ -1042,6 +1042,8 @@ def main():
         return
 
     bx, by = get_curl(Az, dx)
+    if prob_id == 2:
+        bx = np.ones(X.shape)
     Bx, By = get_avg(bx, by)
 
     # add magnetic pressure to get the total pressure
