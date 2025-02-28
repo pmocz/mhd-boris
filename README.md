@@ -21,6 +21,13 @@ python mhd-boris.py 1 1.4
 python mhd-boris.py 1 1.2
 python mhd-boris.py 1 1.0
 python mhd-boris.py 1 0.8
+python mhd-boris.py 2 1.1
+python mhd-boris.py 2 1.0
+python mhd-boris.py 2 0.9
+python mhd-boris.py 2 0.8
+python mhd-boris.py 2 0.7
+python mhd-boris.py 2 0.6
+python mhd-boris.py 2 0.5
 python analysis.py
 ```
 
@@ -54,6 +61,32 @@ Fast Speed:
 
 
 ## 2. Alfven Wave
+
+Timesteps:
+
+![Analysis1](./p2_dt.png)
+
+
+Density:
+
+![Analysis2](./p2_rho.png)
+
+Magnetic Pressure:
+
+![Analysis3](./p2_P_B.png)
+
+Velocity:
+
+![Analysis4](./p2_v.png)
+
+Alfven Speed: 
+
+![Analysis5](./p2_ca.png)
+
+Fast Speed:
+
+![Analysis6](./p2_cf.png)
+
 
 ## 3. Advect Field Loop
 

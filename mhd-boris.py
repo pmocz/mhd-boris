@@ -1142,9 +1142,9 @@ def main():
             f"{v_max:.4f}",
             " alpha=",
             f"{np.min(alpha):.4f}",
-            " mean(|divB|)=",
+            " |divB|=",
             f"{np.mean(np.abs(divB)):.4f}",
-            " mean(|Bz|)=",
+            " |Bz|=",
             f"{np.mean(np.abs(Bz)):.4f}",
         )
 

@@ -5,8 +5,11 @@ import matplotlib.pyplot as plt
 
 
 def main():
-    for prob_id in [1]:
-        cf_limits = [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+    for prob_id in [1, 2]:
+        if prob_id == 1:
+            cf_limits = [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+        elif prob_id == 2:
+            cf_limits = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1]
 
         rho = {}
         P_B = {}
@@ -89,8 +92,6 @@ def main():
         plt.xlabel("t")
         plt.savefig(prefix + "dt.png")
         plt.show()
-
-        return
 
 
 if __name__ == "__main__":
