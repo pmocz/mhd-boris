@@ -4,7 +4,7 @@
 Philip Mocz (2024), [@PMocz](https://twitter.com/PMocz)
 
 Based on 
-[algorithm write-up on Medium](https://levelup.gitconnected.com/create-your-own-constrained-transport-magnetohydrodynamics-simulation-with-python-276f787f537d)
+[algorithm write-up](https://levelup.gitconnected.com/create-your-own-constrained-transport-magnetohydrodynamics-simulation-with-python-276f787f537d)
 
 See also: https://arxiv.org/abs/1902.02810
 
@@ -86,7 +86,4 @@ Alfven Speed:
 Fast Speed:
 
 ![Analysis6](./p2_cf.png)
-
-
-## 3. Advect Field Loop
 
