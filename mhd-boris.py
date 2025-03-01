@@ -16,11 +16,7 @@ The original problem has cf_max ~ 1.9, v_max ~ 1.6
 
 # Simulation parameters (global)
 N = 128  # resolution
-courant_fac = 0.4
-t_end = 0.5
-t_out = 0.01  # draw frequency
 use_slope_limiting = True
-plot_in_real_time = True
 riemann_solver = "llf"
 
 # directions for np.roll()
@@ -275,7 +271,7 @@ def get_flux_hlld(
     cf_limit,
 ):
     """
-    Calculate fluxed between 2 states with local Lax-Friedrichs/Rusanov rule
+    Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule
     rho_L        is a matrix of left-state  density
     rho_R        is a matrix of right-state density
     vx_L         is a matrix of left-state  x-velocity
@@ -650,7 +646,7 @@ def get_flux_llf(
     cf_limit,
 ):
     """
-    Calculate fluxed between 2 states with local Lax-Friedrichs/Rusanov rule
+    Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule
     rho_L        is a matrix of left-state  density
     rho_R        is a matrix of right-state density
     vx_L         is a matrix of left-state  x-velocity
@@ -946,15 +942,12 @@ def main():
     prob_id = int(sys.argv[1])
     cf_limit = float(sys.argv[2])
 
+    global N, use_slope_limiting, riemann_solver
     t = 0.0
-    global \
-        N, \
-        courant_fac, \
-        t_end, \
-        t_out, \
-        use_slope_limiting, \
-        riemann_solver, \
-        plot_in_real_time
+    courant_fac = 0.4
+    t_end = 0.5
+    t_out = 0.01  # draw frequency
+    plot_in_real_time = True
 
     # Mesh
     boxsize = 1.0
