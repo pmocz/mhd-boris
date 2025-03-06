@@ -31,9 +31,7 @@ def main():
             Bz[c_limit] = np.load(
                 "output/" + prefix + "data_Bz_" + str(c_limit) + ".npy"
             )
-            v[c_limit] = np.load(
-                "output/" + prefix + "data_v_" + str(c_limit) + ".npy"
-            )
+            v[c_limit] = np.load("output/" + prefix + "data_v_" + str(c_limit) + ".npy")
             ca[c_limit] = np.load(
                 "output/" + prefix + "data_ca_" + str(c_limit) + ".npy"
             )

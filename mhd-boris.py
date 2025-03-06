@@ -987,7 +987,7 @@ def main():
         rho = np.ones(X.shape)
         P = 0.2 * 0.1 * np.ones(X.shape)  # init. gas pressure
         amp = 0.1
-        t_end = 2.0
+        t_end = 5.0
 
         # angled ICs
         # alpha = np.pi / 4.0
@@ -1170,7 +1170,7 @@ def main():
                 # plt.imshow(Bz.T, cmap="jet")
                 # plt.clim(-0.1, 0.1)
                 plt.plot(Bz[:, N // 2])
-                plt.ylim(-2.0*amp, 2.0*amp)
+                plt.ylim(-2.0 * amp, 2.0 * amp)
             elif prob_id == 3:
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.0011)
