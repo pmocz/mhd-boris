@@ -128,8 +128,16 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_lim
     ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
     cf = np.sqrt(c0**2 + ca**2)
     alpha = np.minimum(1.0, cf_limit / cf)
+    alpha = 1.0 / (1.0 + ca**2 / cf_limit**2)
     vx *= alpha
     vy *= alpha
+    vz *= alpha
+    # recalculate the pressure
+    P = (
+        Energy / vol
+        - 0.5 * rho * (vx**2 + vy**2 + vz**2)
+        - 0.5 * (Bx**2 + By**2 + Bz**2)
+    ) * (gamma - 1.0) + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     return rho, vx, vy, vz, P
 
