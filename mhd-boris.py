@@ -96,7 +96,7 @@ def get_conserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
     return Mass, Momx, Momy, Momz, Energy
 
 
-def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit):
+def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limit):
     """
     Calculate the primitive variable from the conservative
     Mass     is matrix of mass in cells
@@ -124,11 +124,11 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_lim
 
     # Try 2: apply boris factor in recovering the velocity
     # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
-    c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
+    # c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
     ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
-    cf = np.sqrt(c0**2 + ca**2)
-    alpha = np.minimum(1.0, cf_limit / cf)
-    alpha = 1.0 / (1.0 + ca**2 / cf_limit**2)
+    # cf = np.sqrt(c0**2 + ca**2)
+    # alpha = np.minimum(1.0, c_limit / cf)
+    alpha = 1.0 / (1.0 + ca**2 / c_limit**2)
     vx *= alpha
     vy *= alpha
     vz *= alpha
@@ -276,7 +276,7 @@ def get_flux_hlld(
     Bz_L,
     Bz_R,
     gamma,
-    cf_limit,
+    c_limit,
 ):
     """
     Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule
@@ -651,7 +651,7 @@ def get_flux_llf(
     Bz_L,
     Bz_R,
     gamma,
-    cf_limit,
+    c_limit,
 ):
     """
     Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule
@@ -688,10 +688,10 @@ def get_flux_llf(
     cf_L = np.sqrt(c0_L**2 + ca_L**2)
     cf_R = np.sqrt(c0_R**2 + ca_R**2)
     # apply boris factor to wave speeds and momentum flux
-    alpha_L = np.minimum(1.0, cf_limit / cf_L)
-    alpha_R = np.minimum(1.0, cf_limit / cf_R)
-    alpha = np.minimum(alpha_L, alpha_R)
-    alphaSq = alpha**2
+    # alpha_L = np.minimum(1.0, c_limit / cf_L)
+    # alpha_R = np.minimum(1.0, c_limit / cf_R)
+    # alpha = np.minimum(alpha_L, alpha_R)
+    # alphaSq = alpha**2
 
     # left and right energies
     en_L = (
@@ -774,7 +774,7 @@ def get_flux(
     Bz_L,
     Bz_R,
     gamma,
-    cf_limit,
+    c_limit,
 ):
     if method == "llf":
         return get_flux_llf(
@@ -795,7 +795,7 @@ def get_flux(
             Bz_L,
             Bz_R,
             gamma,
-            cf_limit,
+            c_limit,
         )
     elif method == "hlld":
         return get_flux_hlld(
@@ -816,13 +816,13 @@ def get_flux(
             Bz_L,
             Bz_R,
             gamma,
-            cf_limit,
+            c_limit,
         )
     else:
         raise ValueError(f"Unknown method {method}")
 
 
-def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, cf_limit):
+def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, c_limit):
     """single stage of a runge-kutta method to return dudt of all these variables"""
     Bx, By = get_avg(bx, by)
 
@@ -886,7 +886,7 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, cf_limit):
         Bz_XR,
         Bz_XL,
         gamma,
-        cf_limit,
+        c_limit,
     )
     (
         flux_Mass_Y,
@@ -915,7 +915,7 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, cf_limit):
         Bx_YR,
         Bx_YL,
         gamma,
-        cf_limit,
+        c_limit,
     )
     dudt_Mass = dudt_fluxes(flux_Mass_X, flux_Mass_Y, dx)
     dudt_Momx = dudt_fluxes(flux_Momx_X, flux_Momx_Y, dx)
@@ -942,13 +942,13 @@ def main():
 
     # Check for command line arguments
     if len(sys.argv) != 3:
-        print("Usage: python mhd-boris.py <problem_id> <cf_limit>")
+        print("Usage: python mhd-boris.py <problem_id> <c_limit>")
         return
 
     # Parse command line argument
     # problem id & fast speed limit for boris integrator (e.g. 1.0, 1.5, 2.0)
     prob_id = int(sys.argv[1])
-    cf_limit = float(sys.argv[2])
+    c_limit = float(sys.argv[2])
 
     global N, use_slope_limiting, riemann_solver
     t = 0.0
@@ -985,23 +985,23 @@ def main():
     elif prob_id == 2:
         # Circularly polarized Alfven wave
         rho = np.ones(X.shape)
-        P = 0.1 * np.ones(X.shape)  # init. gas pressure
+        P = 0.2 * 0.1 * np.ones(X.shape)  # init. gas pressure
         amp = 0.1
-        t_end = 5.0
+        t_end = 2.0
 
-        alpha = np.pi / 4.0
-        Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2.0)
-        v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
-        v_par = np.zeros(X.shape)
+        # angled ICs
+        # alpha = np.pi / 4.0
+        # Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2.0)
+        # v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
+        # v_par = np.zeros(X.shape)
         # b_perp = 0.1 * np.sin(2.0*np.pi*Xpar)
-        vx = v_par * np.cos(alpha) - v_perp * np.sin(alpha)
-        vy = v_par * np.sin(alpha) + v_perp * np.cos(alpha)
-        Az = 0.1 / (2.0 * np.pi) * np.cos(2.0 * np.pi * Xpar)
-        vz = 0.1 * np.cos(2.0 * np.pi * Xpar)
-        Bz = 0.1 * np.cos(2.0 * np.pi * Xpar)
+        # vx = v_par * np.cos(alpha) - v_perp * np.sin(alpha)
+        # vy = v_par * np.sin(alpha) + v_perp * np.cos(alpha)
+        # Az = amp / (2.0 * np.pi) * np.cos(2.0 * np.pi * Xpar)
+        # vz = amp * np.cos(2.0 * np.pi * Xpar)
+        # Bz = amp * np.cos(2.0 * np.pi * Xpar)
 
         # simplified ICs
-        # TODO: switch to using the above ones instead
         vx = np.zeros(X.shape)
         vy = amp * np.sin(2.0 * np.pi * X)
         vz = amp * np.cos(2.0 * np.pi * X)
@@ -1050,7 +1050,7 @@ def main():
         # get Primitive variables
         Bx, By = get_avg(bx, by)
         rho, vx, vy, vz, P = get_primitive(
-            Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
+            Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limit
         )
 
         # get time step (CFL) = dx / max signal speed
@@ -1060,10 +1060,13 @@ def main():
         )
         ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
         cf = np.sqrt(c0**2 + ca**2)
-        max_cf = np.max(cf)
-        alpha = np.minimum(1.0, cf_limit / np.sqrt(c0**2 + ca**2))
+        c0_max = np.max(c0)
+        cf_max = np.max(cf)
+        alpha1 = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
+        # TODO: is this right?
+        alpha = 1.0 / np.sqrt(1.0 + ca**2 / c_limit**2)
         # Try 1
-        # cf *= alpha
+        cf *= alpha
         dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
         v_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
 
@@ -1081,7 +1084,7 @@ def main():
             dudt_Bz,
             dudt_bx,
             dudt_by,
-        ) = get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, cf_limit)
+        ) = get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, c_limit)
 
         # update solution
         Mass_1 = apply_dudt(Mass, dudt_Mass, dt)
@@ -1106,7 +1109,7 @@ def main():
         # second stage
         Bx, By = get_avg(bx, by)
         rho, vx, vy, vz, P = get_primitive(
-            Mass_1, Momx_1, Momy_1, Momz_1, Energy_1, Bx, By, Bz_1, gamma, vol, cf_limit
+            Mass_1, Momx_1, Momy_1, Momz_1, Energy_1, Bx, By, Bz_1, gamma, vol, c_limit
         )
         (
             dudt_Mass,
@@ -1117,7 +1120,7 @@ def main():
             dudt_Bz,
             dudt_bx,
             dudt_by,
-        ) = get_dudt(rho, vx, vy, vz, P, bx_1, by_1, Bz, dx, gamma, cf_limit)
+        ) = get_dudt(rho, vx, vy, vz, P, bx_1, by_1, Bz, dx, gamma, c_limit)
 
         Mass = apply_dudt(Mass, dudt_Mass, 0.5 * dt)
         Momx = apply_dudt(Momx, dudt_Momx, 0.5 * dt)
@@ -1139,12 +1142,16 @@ def main():
         print(
             "t=",
             f"{t:.4f}",
-            " max_cf =",
-            f"{max_cf:.4f}",
+            " c0_max =",
+            f"{c0_max:.4f}",
+            " cf_max =",
+            f"{cf_max:.4f}",
             " v_max=",
             f"{v_max:.4f}",
             " alpha=",
             f"{np.min(alpha):.4f}",
+            " alpha1=",
+            f"{np.min(alpha1):.4f}",
             " |divB|=",
             f"{np.mean(np.abs(divB)):.4f}",
             " |Bz|=",
@@ -1163,7 +1170,7 @@ def main():
                 # plt.imshow(Bz.T, cmap="jet")
                 # plt.clim(-0.1, 0.1)
                 plt.plot(Bz[:, N // 2])
-                plt.ylim(-0.2, 0.2)
+                plt.ylim(-2.0*amp, 2.0*amp)
             elif prob_id == 3:
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.0011)
@@ -1181,13 +1188,13 @@ def main():
     prefix = "output/p" + str(prob_id) + "_"
 
     # Save figure
-    plt.savefig(prefix + "P_B_" + str(cf_limit) + ".png", dpi=240)
+    plt.savefig(prefix + "P_B_" + str(c_limit) + ".png", dpi=240)
     # plt.show()
 
     # Save rho, P_B, v, vA, cf, and dt_sav
     Bx, By = get_avg(bx, by)
     rho, vx, vy, vz, P = get_primitive(
-        Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, cf_limit
+        Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limit
     )
     P_B = 0.5 * np.sqrt(Bx**2 + By**2 + Bz**2)
     v = np.sqrt(vx**2 + vy**2 + vz**2)
@@ -1195,13 +1202,13 @@ def main():
     c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
     ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
     cf = np.sqrt(c0**2 + ca**2)
-    np.save(prefix + "data_rho_" + str(cf_limit) + ".npy", rho.T)
-    np.save(prefix + "data_P_B_" + str(cf_limit) + ".npy", P_B.T)
-    np.save(prefix + "data_Bz_" + str(cf_limit) + ".npy", Bz.T)
-    np.save(prefix + "data_v_" + str(cf_limit) + ".npy", v.T)
-    np.save(prefix + "data_ca_" + str(cf_limit) + ".npy", ca.T)
-    np.save(prefix + "data_cf_" + str(cf_limit) + ".npy", cf.T)
-    np.save(prefix + "data_dt_" + str(cf_limit) + ".npy", dt_sav)
+    np.save(prefix + "data_rho_" + str(c_limit) + ".npy", rho.T)
+    np.save(prefix + "data_P_B_" + str(c_limit) + ".npy", P_B.T)
+    np.save(prefix + "data_Bz_" + str(c_limit) + ".npy", Bz.T)
+    np.save(prefix + "data_v_" + str(c_limit) + ".npy", v.T)
+    np.save(prefix + "data_ca_" + str(c_limit) + ".npy", ca.T)
+    np.save(prefix + "data_cf_" + str(c_limit) + ".npy", cf.T)
+    np.save(prefix + "data_dt_" + str(c_limit) + ".npy", dt_sav)
 
     return
 
