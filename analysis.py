@@ -53,35 +53,35 @@ def main():
             plt.figure(figsize=(12, 4))
             plt.imshow(rho_all, aspect=1, cmap="jet")
             plt.colorbar()
-            plt.xlabel("cf_max = " + str(c_limits))
+            plt.xlabel("c_limit = " + str(c_limits))
             plt.savefig(prefix + "rho.png")
             plt.show()
 
             plt.figure(figsize=(12, 4))
             plt.imshow(P_B_all, aspect=1, cmap="jet")
             plt.colorbar()
-            plt.xlabel("cf_max = " + str(c_limits))
+            plt.xlabel("c_limit = " + str(c_limits))
             plt.savefig(prefix + "P_B.png")
             plt.show()
 
             plt.figure(figsize=(12, 4))
             plt.imshow(v_all, aspect=1, cmap="jet")
             plt.colorbar()
-            plt.xlabel("cf_max = " + str(c_limits))
+            plt.xlabel("c_limit = " + str(c_limits))
             plt.savefig(prefix + "v.png")
             plt.show()
 
             plt.figure(figsize=(12, 4))
             plt.imshow(ca_all, aspect=1, cmap="jet")
             plt.colorbar()
-            plt.xlabel("cf_max = " + str(c_limits))
+            plt.xlabel("c_limit = " + str(c_limits))
             plt.savefig(prefix + "ca.png")
             plt.show()
 
             plt.figure(figsize=(12, 4))
             plt.imshow(cf_all, aspect=1, cmap="jet")
             plt.colorbar()
-            plt.xlabel("cf_max = " + str(c_limits))
+            plt.xlabel("c_limit = " + str(c_limits))
             plt.savefig(prefix + "cf.png")
             plt.show()
 
@@ -95,7 +95,7 @@ def main():
             for c_limit in c_limits:
                 plt.plot(xlin, lim, "k--")
                 plt.plot(xlin, -lim, "k--")
-                plt.plot(xlin, Bz[c_limit][0, :], label="cf_max = " + str(c_limit))
+                plt.plot(xlin, Bz[c_limit][0, :], label="c_limit = " + str(c_limit))
                 plt.ylim(-0.18, 0.18)
             plt.legend(loc="upper left")
             plt.xlabel("x")
@@ -107,7 +107,7 @@ def main():
         plt.figure()
         for c_limit in c_limits:
             plt.plot(
-                np.cumsum(dt[c_limit]), dt[c_limit], label="cf_max = " + str(c_limit)
+                np.cumsum(dt[c_limit]), dt[c_limit], label="c_limit = " + str(c_limit)
             )
         plt.legend(loc="lower left")
         plt.xlabel("t")

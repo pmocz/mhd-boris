@@ -11,7 +11,7 @@ See also: https://arxiv.org/abs/1902.02810
 Simulate the Orszag-Tang vortex MHD problem
 with the Boris-like Integrator
 
-Run the simulations (`python mhd-boris.py <prob_id> <cf_max>`) and produce analysis with:
+Run the simulations (`python mhd-boris.py <prob_id> <c_limit>`) and produce analysis with:
 
 ```bash
 python mhd-boris.py 1 2.0
