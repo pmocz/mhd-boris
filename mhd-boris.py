@@ -124,14 +124,14 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limi
 
     # Try 2: apply boris factor in recovering the velocity
     # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
-    # c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
+    c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
     ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
-    # cf = np.sqrt(c0**2 + ca**2)
-    # alpha = np.minimum(1.0, c_limit / cf)
-    alpha = 1.0 / (1.0 + ca**2 / c_limit**2)
-    vx *= alpha
-    vy *= alpha
-    vz *= alpha
+    cf = np.sqrt(c0**2 + ca**2)
+    # alphaSq = np.minimum(1.0, c_limit / cf)**2
+    alphaSq = 1.0 / (1.0 + ca**2 / c_limit**2)
+    vx *= alphaSq
+    vy *= alphaSq
+    vz *= alphaSq
     # recalculate the pressure
     P = (
         Energy / vol
@@ -1062,9 +1062,10 @@ def main():
         cf = np.sqrt(c0**2 + ca**2)
         c0_max = np.max(c0)
         cf_max = np.max(cf)
+        # alpha = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
         alpha1 = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
         alpha = 1.0 / np.sqrt(1.0 + ca**2 / c_limit**2)
-        # Try 1/2
+        # Try 1 & 2
         cf *= alpha
         dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
         v_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
