@@ -1063,9 +1063,8 @@ def main():
         c0_max = np.max(c0)
         cf_max = np.max(cf)
         alpha1 = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
-        # TODO: is this right?
         alpha = 1.0 / np.sqrt(1.0 + ca**2 / c_limit**2)
-        # Try 1
+        # Try 1/2
         cf *= alpha
         dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
         v_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
