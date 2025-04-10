@@ -302,10 +302,6 @@ def get_flux(
     ca_R = np.sqrt((Bx_R**2 + By_R**2 + Bz_R**2) / rho_R)
     # cf_L = np.sqrt(c0_L**2 + ca_L**2)
     # cf_R = np.sqrt(c0_R**2 + ca_R**2)
-    # alpha_L = np.minimum(1.0, c_limit / cf_L)
-    # alpha_R = np.minimum(1.0, c_limit / cf_R)
-    # alpha = np.minimum(alpha_L, alpha_R)
-    # alphaSq = alpha**2
 
     # left and right energies
     en_L = (
@@ -357,13 +353,6 @@ def get_flux(
     ) / rho_star * mask
     flux_By = (By_star * momx_star - Bx_star * momy_star) / rho_star
     flux_Bz = (Bz_star * momx_star - Bx_star * momz_star) / rho_star
-
-    ## Try 1
-    # flux_Momx *= alphaSq
-    # flux_Momy *= alphaSq
-    # flux_Momz *= alphaSq
-    # cf_L *= alpha
-    # cf_R *= alpha
 
     C_L = cf_L + np.abs(vx_L)
     C_R = cf_R + np.abs(vx_R)
