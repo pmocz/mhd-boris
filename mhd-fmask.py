@@ -22,6 +22,7 @@ use_slope_limiting = True
 #  -1    right/up
 #   1    left/down
 
+
 def mask_function(rho, rho_limit):
     """
     Masking function to apply to the density field
@@ -30,7 +31,8 @@ def mask_function(rho, rho_limit):
     mask      is ther masking matrix
     """
     mask = np.abs(rho) > rho_limit
-    #mask = 0.5 + 0.5*np.tanh((np.log10(rho) - np.log10(rho_limit))/0.2)
+    # mask = 0.5 + 0.5*np.tanh((np.log10(rho) - np.log10(rho_limit))/0.2)
+
     return mask
 
 
@@ -42,7 +44,6 @@ def get_curl(Az, dx):
     bx       is matrix of cell face x-component magnetic-field
     by       is matrix of cell face y-component magnetic-field
     """
-
     bx = (Az - np.roll(Az, 1, axis=1)) / dx  # = d Az / d y
     by = -(Az - np.roll(Az, 1, axis=0)) / dx  # =-d Az / d x
 
@@ -56,7 +57,6 @@ def get_div(bx, by, dx):
     bx       is matrix of cell face x-component magnetic-field
     by       is matrix of cell face y-component magnetic-field
     """
-
     divB = (bx - np.roll(bx, 1, axis=0) + by - np.roll(by, 1, axis=1)) / dx
 
     return divB
@@ -70,7 +70,6 @@ def get_avg(bx, by):
     Bx       is matrix of cell Bx
     By       is matrix of cell By
     """
-
     Bx = 0.5 * (bx + np.roll(bx, 1, axis=0))
     By = 0.5 * (by + np.roll(by, 1, axis=1))
 
@@ -143,7 +142,6 @@ def get_gradient(f, dx):
     f_dx     is a matrix of derivative of f in the x-direction
     f_dy     is a matrix of derivative of f in the y-direction
     """
-
     f_dx = (np.roll(f, -1, axis=0) - np.roll(f, 1, axis=0)) / (2.0 * dx)
     f_dy = (np.roll(f, -1, axis=1) - np.roll(f, 1, axis=1)) / (2.0 * dx)
 
@@ -158,7 +156,6 @@ def slope_limit(f, dx, f_dx, f_dy):
     f_dx     is a matrix of derivative of f in the x-direction
     f_dy     is a matrix of derivative of f in the y-direction
     """
-
     f_dx = (
         np.maximum(
             0.0,
@@ -303,8 +300,8 @@ def get_flux(
     )
     ca_L = np.sqrt((Bx_L**2 + By_L**2 + Bz_L**2) / rho_L)
     ca_R = np.sqrt((Bx_R**2 + By_R**2 + Bz_R**2) / rho_R)
-    #cf_L = np.sqrt(c0_L**2 + ca_L**2)
-    #cf_R = np.sqrt(c0_R**2 + ca_R**2)
+    # cf_L = np.sqrt(c0_L**2 + ca_L**2)
+    # cf_R = np.sqrt(c0_R**2 + ca_R**2)
     # alpha_L = np.minimum(1.0, c_limit / cf_L)
     # alpha_R = np.minimum(1.0, c_limit / cf_R)
     # alpha = np.minimum(alpha_L, alpha_R)
@@ -706,7 +703,7 @@ def main():
             " v_max=",
             f"{v_max:.4f}",
             " rho_min=",
-            f"{np.min(Mass)/vol:.4f}",
+            f"{np.min(Mass) / vol:.4f}",
             " |divB|=",
             f"{np.mean(np.abs(divB)):.4f}",
             " |Bz|=",
