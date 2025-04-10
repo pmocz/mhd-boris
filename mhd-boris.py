@@ -1107,7 +1107,7 @@ def main():
         by = apply_dudt(by, dudt_by, 0.5 * dt)
 
         # second stage
-        Bx, By = get_avg(bx, by)
+        Bx, By = get_avg(bx_1, by_1)
         rho, vx, vy, vz, P = get_primitive(
             Mass_1, Momx_1, Momy_1, Momz_1, Energy_1, Bx, By, Bz_1, gamma, vol, c_limit
         )
