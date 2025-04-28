@@ -990,13 +990,13 @@ def main():
         t_end = 5.0
 
         # angled ICs
-        # alpha = np.pi / 4.0
-        # Xpar = (np.cos(alpha) * X + np.sin(alpha) * Y) * np.sqrt(2.0)
+        # theta = np.pi / 4.0
+        # Xpar = (np.cos(theta) * X + np.sin(alpthetaha) * Y) * np.sqrt(2.0)
         # v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
         # v_par = np.zeros(X.shape)
         # b_perp = 0.1 * np.sin(2.0*np.pi*Xpar)
-        # vx = v_par * np.cos(alpha) - v_perp * np.sin(alpha)
-        # vy = v_par * np.sin(alpha) + v_perp * np.cos(alpha)
+        # vx = v_par * np.cos(theta) - v_perp * np.sin(theta)
+        # vy = v_par * np.sin(theta) + v_perp * np.cos(theta)
         # Az = amp / (2.0 * np.pi) * np.cos(2.0 * np.pi * Xpar)
         # vz = amp * np.cos(2.0 * np.pi * Xpar)
         # Bz = amp * np.cos(2.0 * np.pi * Xpar)
