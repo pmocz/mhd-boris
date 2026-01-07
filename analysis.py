@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 def main():
     for prob_id in [1, 2]:
         if prob_id == 1:
-            c_limits = [1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+            c_limits = [1.6, 1.8, 2.0, 2.2, 2.4]
         elif prob_id == 2:
-            c_limits = [0.4, 0.6, 0.8, 1.0, 1.2]
+            c_limits = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
 
         rho = {}
         P_B = {}

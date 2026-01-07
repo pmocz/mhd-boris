@@ -11,6 +11,18 @@ Adam Reyes
 Simulate the Orszag-Tang vortex MHD problem (+more)
 with a Boris-like Integrator to control timesteps!
 
+See equations (1) -- (8) of https://arxiv.org/abs/1902.02810
+
+MAIN DIFFERENCE is that:
+
+* Momentum is now (1 + ca^2/c_limit^2) * (rho*v) instead of (rho*v)
+* Reimann solver will use modified wave speeds and U states that account for Boris factor
+* Timestep is increased according to the Boris factor
+
+* NOTE: use llf for now, not HLLD, which does not yet account for modified wave speeds
+
+I mark points of change from vanilla-MHD model with "!!!" in comments.
+
 The original problem has cf_max ~ 1.9, v_max ~ 1.6
 """
 
@@ -67,7 +79,7 @@ def get_avg(bx, by):
     return Bx, By
 
 
-def get_conserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
+def get_conserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol, c_limit):
     """
     Calculate the conserved variable from the primitive
     rho      is matrix of cell densities
@@ -83,10 +95,11 @@ def get_conserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol):
     Momy     is matrix of y-momentum in cells
     Energy   is matrix of energy in cells
     """
+    rho_A = (Bx**2 + By**2 + Bz**2) / c_limit**2  # !!!
     Mass = rho * vol
-    Momx = rho * vx * vol
-    Momy = rho * vy * vol
-    Momz = rho * vz * vol
+    Momx = (rho + rho_A) * vx * vol
+    Momy = (rho + rho_A) * vy * vol
+    Momz = (rho + rho_A) * vz * vol
     Energy = (
         (P - 0.5 * (Bx**2 + By**2 + Bz**2)) / (gamma - 1.0)
         + 0.5 * rho * (vx**2 + vy**2 + vz**2)
@@ -113,26 +126,10 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limi
     P        is matrix of cell Total pressures
     """
     rho = Mass / vol
-    vx = Momx / rho / vol
-    vy = Momy / rho / vol
-    vz = Momz / rho / vol
-    P = (
-        Energy / vol
-        - 0.5 * rho * (vx**2 + vy**2 + vz**2)
-        - 0.5 * (Bx**2 + By**2 + Bz**2)
-    ) * (gamma - 1.0) + 0.5 * (Bx**2 + By**2 + Bz**2)
-
-    # Try 2: apply boris factor in recovering the velocity
-    # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
-    c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
-    ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
-    cf = np.sqrt(c0**2 + ca**2)
-    # alphaSq = np.minimum(1.0, c_limit / cf)**2
-    alphaSq = 1.0 / (1.0 + ca**2 / c_limit**2)
-    vx *= alphaSq
-    vy *= alphaSq
-    vz *= alphaSq
-    # recalculate the pressure
+    rho_A = (Bx**2 + By**2 + Bz**2) / c_limit**2  # !!!
+    vx = Momx / (rho + rho_A) / vol
+    vy = Momy / (rho + rho_A) / vol
+    vz = Momz / (rho + rho_A) / vol
     P = (
         Energy / vol
         - 0.5 * rho * (vx**2 + vy**2 + vz**2)
@@ -687,11 +684,11 @@ def get_flux_llf(
     ca_R = np.sqrt((Bx_R**2 + By_R**2 + Bz_R**2) / rho_R)
     cf_L = np.sqrt(c0_L**2 + ca_L**2)
     cf_R = np.sqrt(c0_R**2 + ca_R**2)
-    # apply boris factor to wave speeds and momentum flux
-    # alpha_L = np.minimum(1.0, c_limit / cf_L)
-    # alpha_R = np.minimum(1.0, c_limit / cf_R)
-    # alpha = np.minimum(alpha_L, alpha_R)
-    # alphaSq = alpha**2
+    # !!! apply boris factor to wave speeds
+    alpha_L = 1.0 / np.sqrt(1.0 + (ca_L / c_limit) ** 2)
+    alpha_R = 1.0 / np.sqrt(1.0 + (ca_R / c_limit) ** 2)
+    cf_L *= alpha_L
+    cf_R *= alpha_R
 
     # left and right energies
     en_L = (
@@ -706,48 +703,67 @@ def get_flux_llf(
     )
 
     # compute star (averaged) states
-    rho_star = 0.5 * (rho_L + rho_R)
-    momx_star = 0.5 * (rho_L * vx_L + rho_R * vx_R)
-    momy_star = 0.5 * (rho_L * vy_L + rho_R * vy_R)
-    momz_star = 0.5 * (rho_L * vz_L + rho_R * vz_R)
-    en_star = 0.5 * (en_L + en_R)
-    Bx_star = 0.5 * (Bx_L + Bx_R)
-    By_star = 0.5 * (By_L + By_R)
-    Bz_star = 0.5 * (Bz_L + Bz_R)
+    # rho_star = 0.5 * (rho_L + rho_R)
+    # momx_star = 0.5 * (rho_L * vx_L + rho_R * vx_R)
+    # momy_star = 0.5 * (rho_L * vy_L + rho_R * vy_R)
+    # momz_star = 0.5 * (rho_L * vz_L + rho_R * vz_R)
+    # en_star = 0.5 * (en_L + en_R)
+    # Bx_star = 0.5 * (Bx_L + Bx_R)
+    # By_star = 0.5 * (By_L + By_R)
+    # Bz_star = 0.5 * (Bz_L + Bz_R)
 
-    P_star = (gamma - 1.0) * (
-        en_star
-        - 0.5 * (momx_star**2 + momy_star**2 + momz_star**2) / rho_star
-        - 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
-    ) + 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
+    # P_star = (gamma - 1.0) * (
+    #    en_star
+    #    - 0.5 * (momx_star**2 + momy_star**2 + momz_star**2) / rho_star
+    #    - 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
+    # ) + 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
 
     # compute fluxes (local Lax-Friedrichs/Rusanov)
-    flux_Mass = momx_star
-    flux_Momx = momx_star**2 / rho_star + P_star - Bx_star * Bx_star
-    flux_Momy = momx_star * momy_star / rho_star - Bx_star * By_star
-    flux_Momz = momx_star * momz_star / rho_star - Bx_star * Bz_star
-    flux_Energy = (en_star + P_star) * momx_star / rho_star - Bx_star * (
-        Bx_star * momx_star + By_star * momy_star + Bz_star * momz_star
-    ) / rho_star
-    flux_By = (By_star * momx_star - Bx_star * momy_star) / rho_star
-    flux_Bz = (Bz_star * momx_star - Bx_star * momz_star) / rho_star
+    # Use the star state
+    # flux_Mass = momx_star
+    # flux_Momx = momx_star**2 / rho_star + P_star - Bx_star * Bx_star
+    # flux_Momy = momx_star * momy_star / rho_star - Bx_star * By_star
+    # flux_Momz = momx_star * momz_star / rho_star - Bx_star * Bz_star
+    # flux_Energy = (en_star + P_star) * momx_star / rho_star - Bx_star * (
+    #    Bx_star * momx_star + By_star * momy_star + Bz_star * momz_star
+    # ) / rho_star
+    # flux_By = (By_star * momx_star - Bx_star * momy_star) / rho_star
+    # flux_Bz = (Bz_star * momx_star - Bx_star * momz_star) / rho_star
 
-    ## Try 1
-    # flux_Momx *= alphaSq
-    # flux_Momy *= alphaSq
-    # flux_Momz *= alphaSq
-    # cf_L *= alpha
-    # cf_R *= alpha
+    # compute fluxes (local Lax-Friedrichs/Rusanov)
+    # Average the left and right fluxes
+    flux_Mass = 0.5 * (rho_L * vx_L + rho_R * vx_R)
+    flux_Momx = 0.5 * (
+        rho_L * vx_L**2 + P_L - Bx_L**2 + rho_R * vx_R**2 + P_R - Bx_R**2
+    )
+    flux_Momy = 0.5 * (
+        rho_L * vx_L * vy_L - Bx_L * By_L + rho_R * vx_R * vy_R - Bx_R * By_R
+    )
+    flux_Momz = 0.5 * (
+        rho_L * vx_L * vz_L - Bx_L * Bz_L + rho_R * vx_R * vz_R - Bx_R * Bz_R
+    )
+    flux_Energy = 0.5 * (
+        (en_L + P_L) * vx_L
+        - Bx_L * (vx_L * Bx_L + vy_L * By_L + vz_L * Bz_L)
+        + (en_R + P_R) * vx_R
+        - Bx_R * (vx_R * Bx_R + vy_R * By_R + vz_R * Bz_R)
+    )
+    flux_By = 0.5 * (By_L * vx_L - Bx_L * vy_L + By_R * vx_R - Bx_R * vy_R)
+    flux_Bz = 0.5 * (Bz_L * vx_L - Bx_L * vz_L + Bz_R * vx_R - Bx_R * vz_R)
 
     C_L = cf_L + np.abs(vx_L)
     C_R = cf_R + np.abs(vx_R)
     C = np.maximum(C_L, C_R)
 
+    # !!! apply Boris correction to U states
+    rhoA_L = (Bx_L**2 + By_L**2 + Bz_L**2) / (c_limit**2)
+    rhoA_R = (Bx_R**2 + By_R**2 + Bz_R**2) / (c_limit**2)
+
     # add stabilizing diffusive term
     flux_Mass -= C * 0.5 * (rho_R - rho_L)
-    flux_Momx -= C * 0.5 * (rho_R * vx_R - rho_L * vx_L)
-    flux_Momy -= C * 0.5 * (rho_R * vy_R - rho_L * vy_L)
-    flux_Momz -= C * 0.5 * (rho_R * vz_R - rho_L * vz_L)
+    flux_Momx -= C * 0.5 * ((rho_R + rhoA_R) * vx_R - (rho_L + rhoA_L) * vx_L)  # !!!
+    flux_Momy -= C * 0.5 * ((rho_R + rhoA_R) * vy_R - (rho_L + rhoA_L) * vy_L)
+    flux_Momz -= C * 0.5 * ((rho_R + rhoA_R) * vz_R - (rho_L + rhoA_L) * vz_L)
     flux_Energy -= C * 0.5 * (en_R - en_L)
     flux_By -= C * 0.5 * (By_R - By_L)
     flux_Bz -= C * 0.5 * (Bz_R - Bz_L)
@@ -1035,11 +1051,11 @@ def main():
 
     # Get conserved variables
     Mass, Momx, Momy, Momz, Energy = get_conserved(
-        rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol
+        rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol, c_limit
     )
 
     # keep track of timesteps
-    dt_sav = []
+    dt_save = []
 
     # prep figure
     plt.figure(figsize=(4, 4), dpi=80)
@@ -1064,8 +1080,8 @@ def main():
         cf_max = np.max(cf)
         # alpha = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
         alpha1 = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
-        alpha = 1.0 / np.sqrt(1.0 + ca**2 / c_limit**2)
-        # Try 1 & 2
+        alpha = 1.0 / np.sqrt(1.0 + (ca / c_limit) ** 2)
+        # !!! apply boris factor to wave speeds
         cf *= alpha
         dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
         v_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
@@ -1135,7 +1151,7 @@ def main():
         t += dt
 
         # save timestep
-        dt_sav.append(dt)
+        dt_save.append(dt)
 
         # check div B
         divB = get_div(bx, by, dx)
@@ -1191,7 +1207,7 @@ def main():
     plt.savefig(prefix + "P_B_" + str(c_limit) + ".png", dpi=240)
     # plt.show()
 
-    # Save rho, P_B, v, vA, cf, and dt_sav
+    # Save rho, P_B, v, vA, cf, and dt_save
     Bx, By = get_avg(bx, by)
     rho, vx, vy, vz, P = get_primitive(
         Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limit
@@ -1208,7 +1224,7 @@ def main():
     np.save(prefix + "data_v_" + str(c_limit) + ".npy", v.T)
     np.save(prefix + "data_ca_" + str(c_limit) + ".npy", ca.T)
     np.save(prefix + "data_cf_" + str(c_limit) + ".npy", cf.T)
-    np.save(prefix + "data_dt_" + str(c_limit) + ".npy", dt_sav)
+    np.save(prefix + "data_dt_" + str(c_limit) + ".npy", dt_save)
 
     return
 

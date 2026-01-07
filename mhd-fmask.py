@@ -28,7 +28,7 @@ def mask_function(rho, rho_limit):
     Masking function to apply to the density field
     rho       is matrix of cell densities
     rho_limit is the density limit for masking
-    mask      is ther masking matrix
+    mask      is the masking matrix
     """
     mask = np.abs(rho) > rho_limit
     # mask = 0.5 + 0.5*np.tanh((np.log10(rho) - np.log10(rho_limit))/0.2)
@@ -584,7 +584,7 @@ def main():
     )
 
     # keep track of timesteps
-    dt_sav = []
+    dt_save = []
 
     # prep figure
     plt.figure(figsize=(4, 4), dpi=80)
@@ -678,7 +678,7 @@ def main():
         t += dt
 
         # save timestep
-        dt_sav.append(dt)
+        dt_save.append(dt)
 
         # check div B
         divB = get_div(bx, by, dx)
@@ -732,7 +732,7 @@ def main():
     plt.savefig(prefix + "P_B_" + str(rho_limit) + ".png", dpi=240)
     # plt.show()
 
-    # Save rho, P_B, v, vA, cf, and dt_sav
+    # Save rho, P_B, v, vA, cf, and dt_save
     Bx, By = get_avg(bx, by)
     rho, vx, vy, vz, P = get_primitive(
         Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol
@@ -749,7 +749,7 @@ def main():
     np.save(prefix + "data_v_" + str(rho_limit) + ".npy", v.T)
     np.save(prefix + "data_ca_" + str(rho_limit) + ".npy", ca.T)
     np.save(prefix + "data_cf_" + str(rho_limit) + ".npy", cf.T)
-    np.save(prefix + "data_dt_" + str(rho_limit) + ".npy", dt_sav)
+    np.save(prefix + "data_dt_" + str(rho_limit) + ".npy", dt_save)
 
     return
 
