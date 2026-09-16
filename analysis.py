@@ -1,118 +1,162 @@
+#!/usr/bin/env python3
 # Analysis of Boris Simulation results
 
-import numpy as np
+import os
+
 import matplotlib.pyplot as plt
+import numpy as np
+
+REF = "inf"  # c_limit label of the un-corrected (ideal MHD) reference run
+
+# c_limit sweeps for each problem, coarsest correction first
+SWEEPS = {
+    1: ["2.4", "2.2", "2.0", "1.8", "1.6"],
+    2: ["32.0", "16.0", "8.0", "4.0", "2.0", "1.0", "0.5"],
+    4: ["16.0", "12.0", "8.0", "6.0"],
+}
+
+TITLES = {
+    1: "Orszag-Tang",
+    2: "Alfven wave",
+    4: "Orszag-Tang + guide field",
+}
+
+
+def load(prob_id, field, c_limit):
+    return np.load(f"output/p{prob_id}_data_{field}_{c_limit}.npy")
+
+
+def strip(prob_id, field, c_limits, fname, label):
+    """Show the reference run and each Boris run side by side."""
+    panels = [load(prob_id, field, c) for c in c_limits]
+    plt.figure(figsize=(2.2 * len(panels), 3.0))
+    plt.imshow(np.hstack(panels), aspect=1, cmap="jet")
+    plt.colorbar()
+    plt.title(label)
+    plt.xlabel("c_limit = " + ", ".join(c_limits))
+    plt.yticks([])
+    plt.xticks([])
+    plt.tight_layout()
+    plt.savefig(fname, dpi=120)
+    plt.close()
 
 
 def main():
-    for prob_id in [1, 2]:
-        if prob_id == 1:
-            c_limits = [1.6, 1.8, 2.0, 2.2, 2.4]
-        elif prob_id == 2:
-            c_limits = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+    if not os.path.isdir("output"):
+        raise SystemExit("no output/ directory -- run the simulations first")
 
-        rho = {}
-        P_B = {}
-        Bz = {}
-        v = {}
-        ca = {}
-        cf = {}
-        dt = {}
+    summary = {}
 
-        # Load the data (rho, P_B, dt)
-        prefix = "p" + str(prob_id) + "_"
-        for c_limit in c_limits:
-            rho[c_limit] = np.load(
-                "output/" + prefix + "data_rho_" + str(c_limit) + ".npy"
-            )
-            P_B[c_limit] = np.load(
-                "output/" + prefix + "data_P_B_" + str(c_limit) + ".npy"
-            )
-            Bz[c_limit] = np.load(
-                "output/" + prefix + "data_Bz_" + str(c_limit) + ".npy"
-            )
-            v[c_limit] = np.load("output/" + prefix + "data_v_" + str(c_limit) + ".npy")
-            ca[c_limit] = np.load(
-                "output/" + prefix + "data_ca_" + str(c_limit) + ".npy"
-            )
-            cf[c_limit] = np.load(
-                "output/" + prefix + "data_cf_" + str(c_limit) + ".npy"
-            )
-            dt[c_limit] = np.load(
-                "output/" + prefix + "data_dt_" + str(c_limit) + ".npy"
-            )
+    for prob_id, c_limits in SWEEPS.items():
+        prefix = f"p{prob_id}_"
+        all_c = [REF] + c_limits
 
-        # stack the rho next to each other and plot it as an image
-        rho_all = np.hstack([rho[c_limit] for c_limit in c_limits])
-        P_B_all = np.hstack([P_B[c_limit] for c_limit in c_limits])
-        v_all = np.hstack([v[c_limit] for c_limit in c_limits])
-        ca_all = np.hstack([ca[c_limit] for c_limit in c_limits])
-        cf_all = np.hstack([cf[c_limit] for c_limit in c_limits])
+        try:
+            dt = {c: load(prob_id, "dt", c) for c in all_c}
+        except FileNotFoundError as e:
+            print(f"skipping problem {prob_id}: {e}")
+            continue
 
-        if prob_id == 1:
-            plt.figure(figsize=(12, 4))
-            plt.imshow(rho_all, aspect=1, cmap="jet")
-            plt.colorbar()
-            plt.xlabel("c_limit = " + str(c_limits))
-            plt.savefig(prefix + "rho.png")
-            plt.show()
+        # ------------------------------------------------------------------
+        # what the Boris correction bought, and what it cost
+        # ------------------------------------------------------------------
+        speedup = {c: len(dt[REF]) / len(dt[c]) for c in all_c}
+        err = {}
+        if prob_id == 2:
+            # Boris deliberately slows the wave, so a pointwise difference would
+            # just measure the intended phase shift.  Compare the amplitude of
+            # the k=1 Fourier mode instead: that is what should be unchanged.
+            def amplitude(c, prob_id=prob_id):
+                bz = load(prob_id, "Bz", c)[0, :]
+                return 2.0 * np.abs(np.fft.rfft(bz)[1]) / len(bz)
 
-            plt.figure(figsize=(12, 4))
-            plt.imshow(P_B_all, aspect=1, cmap="jet")
-            plt.colorbar()
-            plt.xlabel("c_limit = " + str(c_limits))
-            plt.savefig(prefix + "P_B.png")
-            plt.show()
+            amp_ref = amplitude(REF)
+            for c in all_c:
+                err[c] = abs(amplitude(c) - amp_ref) / amp_ref
+        else:
+            rho_ref = load(prob_id, "rho", REF)
+            for c in all_c:
+                rho = load(prob_id, "rho", c)
+                err[c] = np.mean(np.abs(rho - rho_ref)) / np.mean(np.abs(rho_ref))
+        summary[prob_id] = (speedup, err, all_c)
 
-            plt.figure(figsize=(12, 4))
-            plt.imshow(v_all, aspect=1, cmap="jet")
-            plt.colorbar()
-            plt.xlabel("c_limit = " + str(c_limits))
-            plt.savefig(prefix + "v.png")
-            plt.show()
-
-            plt.figure(figsize=(12, 4))
-            plt.imshow(ca_all, aspect=1, cmap="jet")
-            plt.colorbar()
-            plt.xlabel("c_limit = " + str(c_limits))
-            plt.savefig(prefix + "ca.png")
-            plt.show()
-
-            plt.figure(figsize=(12, 4))
-            plt.imshow(cf_all, aspect=1, cmap="jet")
-            plt.colorbar()
-            plt.xlabel("c_limit = " + str(c_limits))
-            plt.savefig(prefix + "cf.png")
-            plt.show()
+        # ------------------------------------------------------------------
+        # per-problem figures
+        # ------------------------------------------------------------------
+        if prob_id in (1, 4):
+            for field, label in (
+                ("rho", "density"),
+                ("P_B", "magnetic pressure"),
+                ("v", "|v|"),
+                ("ca", "Alfven speed"),
+                ("cf", "fast speed"),
+            ):
+                strip(prob_id, field, all_c, prefix + field + ".png", label)
 
         if prob_id == 2:
-            # plot Bz lineout for each c_limit
             plt.figure()
-            N = Bz[c_limit].shape[0]
+            N = load(prob_id, "Bz", REF).shape[0]
             dx = 1.0 / N
             xlin = np.linspace(0.5 * dx, 1.0 - 0.5 * dx, N)
-            lim = 0.1 * np.ones(N)
-            for c_limit in c_limits:
-                plt.plot(xlin, lim, "k--")
-                plt.plot(xlin, -lim, "k--")
-                plt.plot(xlin, Bz[c_limit][0, :], label="c_limit = " + str(c_limit))
-                plt.ylim(-0.18, 0.18)
-            plt.legend(loc="upper left")
+            plt.plot(xlin, 0.1 * np.ones(N), "k--", lw=0.8)
+            plt.plot(xlin, -0.1 * np.ones(N), "k--", lw=0.8)
+            for c in all_c:
+                plt.plot(xlin, load(prob_id, "Bz", c)[0, :], label="c_limit = " + c)
+            plt.ylim(-0.18, 0.18)
+            plt.legend(loc="upper left", fontsize=7, ncol=2)
             plt.xlabel("x")
             plt.ylabel("Bz")
-            plt.savefig(prefix + "Bz.png")
-            plt.show()
+            plt.title("Alfven wave at t = 5 (amplitude should stay 0.1)")
+            plt.tight_layout()
+            plt.savefig(prefix + "Bz.png", dpi=120)
+            plt.close()
 
-        # plot the dt for each c_limit
+        # Timestep history.  The last step of every run is truncated so that it
+        # lands exactly on t_end, so it is not a CFL-limited step -- drop it or
+        # it shows up as a spurious cliff at the right edge of the plot.
         plt.figure()
-        for c_limit in c_limits:
-            plt.plot(
-                np.cumsum(dt[c_limit]), dt[c_limit], label="c_limit = " + str(c_limit)
-            )
-        plt.legend(loc="lower left")
+        for c in all_c:
+            plt.plot(np.cumsum(dt[c])[:-1], dt[c][:-1], label=f"c_limit = {c}")
+        plt.legend(loc="lower left", fontsize=8)
         plt.xlabel("t")
-        plt.savefig(prefix + "dt.png")
-        plt.show()
+        plt.ylabel("dt")
+        plt.title(TITLES[prob_id] + ": timestep")
+        plt.tight_layout()
+        plt.savefig(prefix + "dt.png", dpi=120)
+        plt.close()
+
+    # ----------------------------------------------------------------------
+    # the summary plot: how much solution change did each speedup cost?
+    # ----------------------------------------------------------------------
+    plt.figure(figsize=(6, 4.5))
+    for prob_id, (speedup, err, all_c) in summary.items():
+        s = [speedup[c] for c in all_c]
+        e = [err[c] for c in all_c]
+        plt.plot(s, e, "o-", label=f"{prob_id}: {TITLES[prob_id]}")
+        for c in all_c:
+            if c != REF:
+                plt.annotate(
+                    c,
+                    (speedup[c], err[c]),
+                    fontsize=6,
+                    xytext=(3, 3),
+                    textcoords="offset points",
+                )
+    plt.yscale("log")
+    plt.xlabel("speedup  (timesteps taken, relative to ideal MHD)")
+    plt.ylabel("relative change in the solution")
+    plt.title("What the Boris correction costs for what it buys")
+    plt.grid(alpha=0.3)
+    plt.legend(fontsize=8)
+    plt.tight_layout()
+    plt.savefig("speedup_vs_error.png", dpi=120)
+    plt.close()
+
+    # ----------------------------------------------------------------------
+    print(f"{'problem':<28} {'c_limit':>8} {'speedup':>9} {'change':>10}")
+    for prob_id, (speedup, err, all_c) in summary.items():
+        for c in all_c:
+            print(f"{TITLES[prob_id]:<28} {c:>8} {speedup[c]:>8.2f}x {err[c]:>9.1%}")
 
 
 if __name__ == "__main__":

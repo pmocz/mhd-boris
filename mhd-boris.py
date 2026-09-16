@@ -1,6 +1,9 @@
+#!/usr/bin/env python3
+import argparse
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
-import sys
 
 """
 2.5D Constrained Transport Magnetohydrodynamics
@@ -11,29 +14,30 @@ Adam Reyes
 Simulate the Orszag-Tang vortex MHD problem (+more)
 with a Boris-like Integrator to control timesteps!
 
-See equations (1) -- (8) of https://arxiv.org/abs/1902.02810
+See equations (1) -- (8) of Matsumoto, Miyoshi & Takasao (2019),
+https://arxiv.org/abs/1902.02810
 
-MAIN DIFFERENCE is that:
+MAIN DIFFERENCE from vanilla MHD is that:
 
-* Momentum is now (1 + ca^2/c_limit^2) * (rho*v) instead of (rho*v)
-* Reimann solver will use modified wave speeds and U states that account for Boris factor
-* Timestep is increased according to the Boris factor
+* Momentum is now (rho + rho_A) * v  instead of  rho * v,  with rho_A = |B|^2/c^2
+  (equivalently (1 + vA^2/c^2) * rho * v).  The fluxes are unchanged.
+* The Riemann solver uses Boris-corrected wave speeds, and its dissipation
+  operates on the Boris-corrected conserved state.
+* The timestep is therefore increased by the Boris factor.
 
-* NOTE: use llf for now, not HLLD, which does not yet account for modified wave speeds
-
-I mark points of change from vanilla-MHD model with "!!!" in comments.
+I mark points of change from the vanilla-MHD model with "!!!" in comments.
 
 The original problem has cf_max ~ 1.9, v_max ~ 1.6
 """
 
-# Simulation parameters (global)
-N = 128  # resolution
-use_slope_limiting = True
-riemann_solver = "llf"
-
 # directions for np.roll()
 #  -1    right/up
 #   1    left/down
+
+# pressure/density floors applied to reconstructed face states only
+# (the conservative update itself is untouched, so the scheme stays conservative)
+SMALL_RHO = 1.0e-12
+SMALL_P = 1.0e-12
 
 
 def get_curl(Az, dx):
@@ -53,7 +57,7 @@ def get_curl(Az, dx):
 
 def get_div(bx, by, dx):
     """
-    Calculate the discrete curl of each cell
+    Calculate the discrete divergence of each cell
     dx       is the cell size
     bx       is matrix of cell face x-component magnetic-field
     by       is matrix of cell face y-component magnetic-field
@@ -79,32 +83,33 @@ def get_avg(bx, by):
     return Bx, By
 
 
-def get_conserved(rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol, c_limit):
+def get_conserved(rho, vx, vy, vz, p, Bx, By, Bz, gamma, vol, c_limit):
     """
     Calculate the conserved variable from the primitive
     rho      is matrix of cell densities
     vx       is matrix of cell x-velocity
     vy       is matrix of cell y-velocity
-    P        is matrix of cell Total pressures
+    vz       is matrix of cell z-velocity
+    p        is matrix of cell GAS pressures
     Bx       is matrix of cell Bx
     By       is matrix of cell By
+    Bz       is matrix of cell Bz
     gamma    is ideal gas gamma
     vol      is cell volume
+    c_limit  is the Boris speed limit
     Mass     is matrix of mass in cells
-    Momx     is matrix of x-momentum in cells
-    Momy     is matrix of y-momentum in cells
+    Momx     is matrix of (Boris) x-momentum in cells
+    Momy     is matrix of (Boris) y-momentum in cells
+    Momz     is matrix of (Boris) z-momentum in cells
     Energy   is matrix of energy in cells
     """
-    rho_A = (Bx**2 + By**2 + Bz**2) / c_limit**2  # !!!
+    B2 = Bx**2 + By**2 + Bz**2
+    rho_A = B2 / c_limit**2  # !!!
     Mass = rho * vol
-    Momx = (rho + rho_A) * vx * vol
-    Momy = (rho + rho_A) * vy * vol
-    Momz = (rho + rho_A) * vz * vol
-    Energy = (
-        (P - 0.5 * (Bx**2 + By**2 + Bz**2)) / (gamma - 1.0)
-        + 0.5 * rho * (vx**2 + vy**2 + vz**2)
-        + 0.5 * (Bx**2 + By**2 + Bz**2)
-    ) * vol
+    Momx = (rho + rho_A) * vx * vol  # !!!
+    Momy = (rho + rho_A) * vy * vol  # !!!
+    Momz = (rho + rho_A) * vz * vol  # !!!
+    Energy = (p / (gamma - 1.0) + 0.5 * rho * (vx**2 + vy**2 + vz**2) + 0.5 * B2) * vol
 
     return Mass, Momx, Momy, Momz, Energy
 
@@ -113,30 +118,31 @@ def get_primitive(Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limi
     """
     Calculate the primitive variable from the conservative
     Mass     is matrix of mass in cells
-    Momx     is matrix of x-momentum in cells
-    Momy     is matrix of y-momentum in cells
+    Momx     is matrix of (Boris) x-momentum in cells
+    Momy     is matrix of (Boris) y-momentum in cells
+    Momz     is matrix of (Boris) z-momentum in cells
     Energy   is matrix of energy in cells
     Bx       is matrix of cell Bx
     By       is matrix of cell By
+    Bz       is matrix of cell Bz
     gamma    is ideal gas gamma
     vol      is cell volume
+    c_limit  is the Boris speed limit
     rho      is matrix of cell densities
     vx       is matrix of cell x-velocity
     vy       is matrix of cell y-velocity
-    P        is matrix of cell Total pressures
+    vz       is matrix of cell z-velocity
+    p        is matrix of cell GAS pressures
     """
+    B2 = Bx**2 + By**2 + Bz**2
     rho = Mass / vol
-    rho_A = (Bx**2 + By**2 + Bz**2) / c_limit**2  # !!!
-    vx = Momx / (rho + rho_A) / vol
-    vy = Momy / (rho + rho_A) / vol
-    vz = Momz / (rho + rho_A) / vol
-    P = (
-        Energy / vol
-        - 0.5 * rho * (vx**2 + vy**2 + vz**2)
-        - 0.5 * (Bx**2 + By**2 + Bz**2)
-    ) * (gamma - 1.0) + 0.5 * (Bx**2 + By**2 + Bz**2)
+    rho_A = B2 / c_limit**2  # !!!
+    vx = Momx / (rho + rho_A) / vol  # !!!
+    vy = Momy / (rho + rho_A) / vol  # !!!
+    vz = Momz / (rho + rho_A) / vol  # !!!
+    p = (Energy / vol - 0.5 * rho * (vx**2 + vy**2 + vz**2) - 0.5 * B2) * (gamma - 1.0)
 
-    return rho, vx, vy, vz, P
+    return rho, vx, vy, vz, p
 
 
 def get_gradient(f, dx):
@@ -207,26 +213,24 @@ def slope_limit(f, dx, f_dx, f_dy):
 
 def extrapolate_in_space_to_face(f, f_dx, f_dy, dx):
     """
-    Calculate the gradients of a field
+    Extrapolate a cell-centered field to the two sides of each cell face.
     f        is a matrix of the field
     f_dx     is a matrix of the field x-derivatives
     f_dy     is a matrix of the field y-derivatives
     dx       is the cell size
-    f_XL     is a matrix of spatial-extrapolated values on `left' face along x-axis
-    f_XR     is a matrix of spatial-extrapolated values on `right' face along x-axis
-    f_YL     is a matrix of spatial-extrapolated values on `left' face along y-axis
-    f_YR     is a matrix of spatial-extrapolated values on `right' face along y-axis
+    f_Lx     is the state on the left  side of the x-face at i+1/2 (from cell i)
+    f_Rx     is the state on the right side of the x-face at i+1/2 (from cell i+1)
+    f_Ly     is the state below        the y-face at j+1/2 (from cell j)
+    f_Ry     is the state above        the y-face at j+1/2 (from cell j+1)
     """
 
-    f_XL = f - f_dx * dx / 2.0
-    f_XL = np.roll(f_XL, -1, axis=0)
-    f_XR = f + f_dx * dx / 2.0
+    f_Lx = f + f_dx * dx / 2.0
+    f_Rx = np.roll(f - f_dx * dx / 2.0, -1, axis=0)
 
-    f_YL = f - f_dy * dx / 2.0
-    f_YL = np.roll(f_YL, -1, axis=1)
-    f_YR = f + f_dy * dx / 2.0
+    f_Ly = f + f_dy * dx / 2.0
+    f_Ry = np.roll(f - f_dy * dx / 2.0, -1, axis=1)
 
-    return f_XL, f_XR, f_YL, f_YR
+    return f_Lx, f_Rx, f_Ly, f_Ry
 
 
 def dudt_fluxes(flux_X, flux_Y, dx):
@@ -254,54 +258,157 @@ def apply_dudt(F, dudt, dt):
     return F + dt * dudt
 
 
-# HLLD (adapted from Athena)
-def get_flux_hlld(
-    rho_L,
-    rho_R,
-    vx_L,
-    vx_R,
-    vy_L,
-    vy_R,
-    vz_L,
-    vz_R,
-    P_L,
-    P_R,
-    Bx_L,
-    Bx_R,
-    By_L,
-    By_R,
-    Bz_L,
-    Bz_R,
-    gamma,
-    c_limit,
-):
+def get_boris_speeds(rho, p, Bn, Bt1, Bt2, gamma, c_limit):
     """
-    Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule
-    rho_L        is a matrix of left-state  density
-    rho_R        is a matrix of right-state density
-    vx_L         is a matrix of left-state  x-velocity
-    vx_R         is a matrix of right-state x-velocity
-    vy_L         is a matrix of left-state  y-velocity
-    vy_R         is a matrix of right-state y-velocity
-    P_L          is a matrix of left-state  Total pressure
-    P_R          is a matrix of right-state Total pressure
-    Bx_L         is a matrix of left-state  x-magnetic-field
-    Bx_R         is a matrix of right-state x-magnetic-field
-    By_L         is a matrix of left-state  y-magnetic-field
-    By_R         is a matrix of right-state y-magnetic-field
-    gamma        is the ideal gas gamma
-    flux_Mass    is the matrix of mass fluxes
-    flux_Momx    is the matrix of x-momentum fluxes
-    flux_Momy    is the matrix of y-momentum fluxes
-    flux_Energy  is the matrix of energy fluxes
+    Boris-corrected fast magnetosonic speed along the face normal n, and the
+    Boris (Lorentz-like) factor.  Matsumoto et al. (2019):
+
+        gamma_A  = 1 / sqrt(1 + vA^2/c^2)
+        cf_boris = gamma_A * sqrt( (a^2 + vA^2
+                                    + sqrt((a^2+vA^2)^2 - 4 a^2 vA_n^2)) / 2 )
+
+    Note that the *directional* fast speed is used, not the upper bound
+    sqrt(a^2 + vA^2): the two differ by a lot whenever B is nearly aligned
+    with the face normal, and using the bound needlessly diffuses the solution
+    and shrinks the timestep.
+    """
+    B2 = Bn**2 + Bt1**2 + Bt2**2
+    a2 = gamma * np.maximum(p, SMALL_P) / rho
+    vA2 = B2 / rho
+    vAn2 = Bn**2 / rho
+
+    gamma_A = 1.0 / np.sqrt(1.0 + vA2 / c_limit**2)  # !!!
+    tmp = a2 + vA2
+    disc = np.maximum(tmp**2 - 4.0 * a2 * vAn2, 0.0)
+    cf = np.sqrt(0.5 * (tmp + np.sqrt(disc)))
+
+    return gamma_A * cf, gamma_A  # !!!
+
+
+def get_state_1d(rho, vn, vt1, vt2, p, Bn, Bt1, Bt2, gamma, c_limit):
+    """
+    Boris-corrected conserved state and its flux, in the face-aligned frame
+    (n, t1, t2).  The fluxes are the ordinary MHD ones -- only the conserved
+    momentum carries the Boris correction.  The normal field Bn is shared by
+    the left and right states (constrained transport keeps it single-valued),
+    so the normal-field flux vanishes identically and is not returned.
+    """
+    B2 = Bn**2 + Bt1**2 + Bt2**2
+    v2 = vn**2 + vt1**2 + vt2**2
+    vB = vn * Bn + vt1 * Bt1 + vt2 * Bt2
+    pT = p + 0.5 * B2
+    en = p / (gamma - 1.0) + 0.5 * rho * v2 + 0.5 * B2
+    rho_B = rho + B2 / c_limit**2  # !!! Boris-corrected inertia
+
+    U = (
+        rho,
+        rho_B * vn,  # !!!
+        rho_B * vt1,  # !!!
+        rho_B * vt2,  # !!!
+        en,
+        Bt1,
+        Bt2,
+    )
+    F = (
+        rho * vn,
+        rho * vn * vn + pT - Bn * Bn,
+        rho * vn * vt1 - Bn * Bt1,
+        rho * vn * vt2 - Bn * Bt2,
+        (en + pT) * vn - Bn * vB,
+        Bt1 * vn - Bn * vt1,
+        Bt2 * vn - Bn * vt2,
+    )
+
+    return U, F
+
+
+def get_flux_llf(Bn, W_L, W_R, gamma, c_limit):
+    """
+    Calculate fluxes between 2 states with the local Lax-Friedrichs/Rusanov rule
+    Bn       is the (single-valued) face-normal magnetic field
+    W_L      is the left  state (rho, vn, vt1, vt2, p, Bt1, Bt2)
+    W_R      is the right state (rho, vn, vt1, vt2, p, Bt1, Bt2)
+    gamma    is the ideal gas gamma
+    c_limit  is the Boris speed limit
+    """
+    rho_L, vn_L, vt1_L, vt2_L, p_L, Bt1_L, Bt2_L = W_L
+    rho_R, vn_R, vt1_R, vt2_R, p_R, Bt1_R, Bt2_R = W_R
+
+    U_L, F_L = get_state_1d(
+        rho_L, vn_L, vt1_L, vt2_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit
+    )
+    U_R, F_R = get_state_1d(
+        rho_R, vn_R, vt1_R, vt2_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit
+    )
+
+    # !!! Boris-corrected signal speed
+    cf_L, _ = get_boris_speeds(rho_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit)
+    cf_R, _ = get_boris_speeds(rho_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit)
+    C = np.maximum(np.abs(vn_L) + cf_L, np.abs(vn_R) + cf_R)
+
+    # !!! the dissipation acts on the Boris-corrected conserved state U
+    return tuple(
+        0.5 * (fl + fr) - 0.5 * C * (ur - ul)
+        for fl, fr, ul, ur in zip(F_L, F_R, U_L, U_R)
+    )
+
+
+def get_flux_hll(Bn, W_L, W_R, gamma, c_limit):
+    """
+    Calculate fluxes between 2 states with the HLL rule.  Same arguments as
+    get_flux_llf.  Cheaper on dissipation than LLF because the two signal
+    speeds are one-sided.
+    """
+    rho_L, vn_L, vt1_L, vt2_L, p_L, Bt1_L, Bt2_L = W_L
+    rho_R, vn_R, vt1_R, vt2_R, p_R, Bt1_R, Bt2_R = W_R
+
+    U_L, F_L = get_state_1d(
+        rho_L, vn_L, vt1_L, vt2_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit
+    )
+    U_R, F_R = get_state_1d(
+        rho_R, vn_R, vt1_R, vt2_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit
+    )
+
+    cf_L, gamma_A_L = get_boris_speeds(rho_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit)
+    cf_R, gamma_A_R = get_boris_speeds(rho_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit)
+    cf = np.maximum(cf_L, cf_R)
+
+    # !!! The Boris system is not Galilean invariant: the advective eigenvalues
+    # are shifted towards gamma_A^2 * vn (see eqn. 14 of Matsumoto et al. 2019,
+    # whose Alfven speeds interpolate between gamma_A^2 S_M and S_M).  Bracket
+    # both so that the HLL fan always contains the true wave fan.
+    u_L = gamma_A_L**2 * vn_L
+    u_R = gamma_A_R**2 * vn_R
+    S_L = np.minimum(np.minimum(vn_L, u_L), np.minimum(vn_R, u_R)) - cf
+    S_R = np.maximum(np.maximum(vn_L, u_L), np.maximum(vn_R, u_R)) + cf
+
+    S_L = np.minimum(S_L, 0.0)
+    S_R = np.maximum(S_R, 0.0)
+    inv = 1.0 / (S_R - S_L)
+
+    return tuple(
+        (S_R * fl - S_L * fr + S_L * S_R * (ur - ul)) * inv
+        for fl, fr, ul, ur in zip(F_L, F_R, U_L, U_R)
+    )
+
+
+# HLLD (adapted from Athena).  Vanilla MHD only -- no Boris correction.
+def get_flux_hlld(Bn, W_L, W_R, gamma, c_limit):
+    """
+    Calculate fluxes between 2 states with the HLLD solver of
+    Miyoshi & Kusano (2005).  Same arguments as get_flux_llf.
+
+    NOTE: this solver assumes the vanilla MHD eigenstructure and is only used
+    when the Boris correction is switched off (c_limit = inf).  Its Boris
+    generalisation is the subject of Matsumoto et al. (2019) and is not
+    implemented here.
     """
 
     SMALL_NUMBER = 1.0e-8
 
-    P_L -= 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
-    P_R -= 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
-
-    Bxi = 0.5 * (Bx_L + Bx_R)
+    rho_L, vx_L, vy_L, vz_L, P_L, By_L, Bz_L = W_L
+    rho_R, vx_R, vy_R, vz_R, P_R, By_R, Bz_R = W_R
+    Bxi = Bn
 
     Mx_L = rho_L * vx_L
     My_L = rho_L * vy_L
@@ -309,7 +416,7 @@ def get_flux_hlld(
     E_L = (
         P_L / (gamma - 1.0)
         + 0.5 * rho_L * (vx_L**2 + vy_L**2 + vz_L**2)
-        + 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
+        + 0.5 * (Bxi**2 + By_L**2 + Bz_L**2)
     )
 
     Mx_R = rho_R * vx_R
@@ -318,7 +425,7 @@ def get_flux_hlld(
     E_R = (
         P_R / (gamma - 1.0)
         + 0.5 * rho_R * (vx_R**2 + vy_R**2 + vz_R**2)
-        + 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
+        + 0.5 * (Bxi**2 + By_R**2 + Bz_R**2)
     )
 
     # --- Step 2. ------------------------------------------------------------------
@@ -423,18 +530,8 @@ def get_flux_hlld(
         + ptst * spd3
         + Bxi * (vx_L * Bxi + vy_L * By_L + vz_L * Bz_L - vbstl)
     ) / sdml
-    # WLst_d = ULst_d
-    # WLst_vx = ULst_Mx / ULst_d
     WLst_vy = ULst_My / ULst_d
     WLst_vz = ULst_Mz / ULst_d
-    # WLst_Bx = ULst_Bx
-    # WLst_By = ULst_By
-    # WLst_Bz = ULst_Bz
-    # WLst_P = (gamma - 1.0) * (
-    #    ULst_E
-    #    - 0.5 * WLst_d * (WLst_vx**2 + WLst_vy**2 + WLst_vz**2)
-    #    - 0.5 * (WLst_Bx**2 + WLst_By**2 + WLst_Bz**2)
-    # )
 
     # Ur*
     # eqn (39) of M&K
@@ -460,18 +557,8 @@ def get_flux_hlld(
         + ptst * spd3
         + Bxi * (vx_R * Bxi + vy_R * By_R + vz_R * Bz_R - vbstr)
     ) / sdmr
-    # WRst_d = URst_d
-    # WRst_vx = URst_Mx / URst_d
     WRst_vy = URst_My / URst_d
     WRst_vz = URst_Mz / URst_d
-    # WRst_Bx = URst_Bx
-    # WRst_By = URst_By
-    # WRst_Bz = URst_Bz
-    # WRst_P = (gamma - 1) * (
-    #    URst_E
-    #    - 0.5 * WRst_d * (WRst_vx**2 + WRst_vy**2 + WRst_vz**2)
-    #    - 0.5 * (WRst_Bx**2 + WRst_By**2 + WRst_Bz**2)
-    # )
 
     # Ul**  and Ur**  - if Bx is zero, same as  * -states
     #   if(Bxi == 0.0)
@@ -494,8 +581,7 @@ def get_flux_hlld(
 
     # else
     invsumd = 1.0 / (sqrtdl + sqrtdr)
-    Bxsig = 0 * Bxi - 1
-    Bxsig[Bxi > 0] = 1
+    Bxsig = np.where(Bxi > 0, 1.0, -1.0)
 
     ULdst_d = ULdst_d + ULst_d * (~isDegen)
     URdst_d = URdst_d + URst_d * (~isDegen)
@@ -629,252 +715,55 @@ def get_flux_hlld(
     return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
 
 
-# local Lax-Friedrichs/Rusanov
-def get_flux_llf(
-    rho_L,
-    rho_R,
-    vx_L,
-    vx_R,
-    vy_L,
-    vy_R,
-    vz_L,
-    vz_R,
-    P_L,
-    P_R,
-    Bx_L,
-    Bx_R,
-    By_L,
-    By_R,
-    Bz_L,
-    Bz_R,
-    gamma,
-    c_limit,
-):
-    """
-    Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule
-    rho_L        is a matrix of left-state  density
-    rho_R        is a matrix of right-state density
-    vx_L         is a matrix of left-state  x-velocity
-    vx_R         is a matrix of right-state x-velocity
-    vy_L         is a matrix of left-state  y-velocity
-    vy_R         is a matrix of right-state y-velocity
-    P_L          is a matrix of left-state  Total pressure
-    P_R          is a matrix of right-state Total pressure
-    Bx_L         is a matrix of left-state  x-magnetic-field
-    Bx_R         is a matrix of right-state x-magnetic-field
-    By_L         is a matrix of left-state  y-magnetic-field
-    By_R         is a matrix of right-state y-magnetic-field
-    gamma        is the ideal gas gamma
-    flux_Mass    is the matrix of mass fluxes
-    flux_Momx    is the matrix of x-momentum fluxes
-    flux_Momy    is the matrix of y-momentum fluxes
-    flux_Energy  is the matrix of energy fluxes
-    """
-
-    # find wavespeeds
-    # c0_L = np.sqrt( gamma*(P_L-0.5*(Bx_L**2+By_L**2+Bz_L**2))/rho_L )
-    # c0_R = np.sqrt( gamma*(P_R-0.5*(Bx_R**2+By_R**2+Bz_R**2))/rho_R )
-    c0_L = np.sqrt(
-        gamma * (np.maximum(P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2), 1.0e-16)) / rho_L
-    )
-    c0_R = np.sqrt(
-        gamma * (np.maximum(P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2), 1.0e-16)) / rho_R
-    )
-    ca_L = np.sqrt((Bx_L**2 + By_L**2 + Bz_L**2) / rho_L)
-    ca_R = np.sqrt((Bx_R**2 + By_R**2 + Bz_R**2) / rho_R)
-    cf_L = np.sqrt(c0_L**2 + ca_L**2)
-    cf_R = np.sqrt(c0_R**2 + ca_R**2)
-    # !!! apply boris factor to wave speeds
-    alpha_L = 1.0 / np.sqrt(1.0 + (ca_L / c_limit) ** 2)
-    alpha_R = 1.0 / np.sqrt(1.0 + (ca_R / c_limit) ** 2)
-    cf_L *= alpha_L
-    cf_R *= alpha_R
-
-    # left and right energies
-    en_L = (
-        (P_L - 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)) / (gamma - 1.0)
-        + 0.5 * rho_L * (vx_L**2 + vy_L**2 + vz_L**2)
-        + 0.5 * (Bx_L**2 + By_L**2 + Bz_L**2)
-    )
-    en_R = (
-        (P_R - 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)) / (gamma - 1.0)
-        + 0.5 * rho_R * (vx_R**2 + vy_R**2 + vz_R**2)
-        + 0.5 * (Bx_R**2 + By_R**2 + Bz_R**2)
-    )
-
-    # compute star (averaged) states
-    # rho_star = 0.5 * (rho_L + rho_R)
-    # momx_star = 0.5 * (rho_L * vx_L + rho_R * vx_R)
-    # momy_star = 0.5 * (rho_L * vy_L + rho_R * vy_R)
-    # momz_star = 0.5 * (rho_L * vz_L + rho_R * vz_R)
-    # en_star = 0.5 * (en_L + en_R)
-    # Bx_star = 0.5 * (Bx_L + Bx_R)
-    # By_star = 0.5 * (By_L + By_R)
-    # Bz_star = 0.5 * (Bz_L + Bz_R)
-
-    # P_star = (gamma - 1.0) * (
-    #    en_star
-    #    - 0.5 * (momx_star**2 + momy_star**2 + momz_star**2) / rho_star
-    #    - 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
-    # ) + 0.5 * (Bx_star**2 + By_star**2 + Bz_star**2)
-
-    # compute fluxes (local Lax-Friedrichs/Rusanov)
-    # Use the star state
-    # flux_Mass = momx_star
-    # flux_Momx = momx_star**2 / rho_star + P_star - Bx_star * Bx_star
-    # flux_Momy = momx_star * momy_star / rho_star - Bx_star * By_star
-    # flux_Momz = momx_star * momz_star / rho_star - Bx_star * Bz_star
-    # flux_Energy = (en_star + P_star) * momx_star / rho_star - Bx_star * (
-    #    Bx_star * momx_star + By_star * momy_star + Bz_star * momz_star
-    # ) / rho_star
-    # flux_By = (By_star * momx_star - Bx_star * momy_star) / rho_star
-    # flux_Bz = (Bz_star * momx_star - Bx_star * momz_star) / rho_star
-
-    # compute fluxes (local Lax-Friedrichs/Rusanov)
-    # Average the left and right fluxes
-    flux_Mass = 0.5 * (rho_L * vx_L + rho_R * vx_R)
-    flux_Momx = 0.5 * (
-        rho_L * vx_L**2 + P_L - Bx_L**2 + rho_R * vx_R**2 + P_R - Bx_R**2
-    )
-    flux_Momy = 0.5 * (
-        rho_L * vx_L * vy_L - Bx_L * By_L + rho_R * vx_R * vy_R - Bx_R * By_R
-    )
-    flux_Momz = 0.5 * (
-        rho_L * vx_L * vz_L - Bx_L * Bz_L + rho_R * vx_R * vz_R - Bx_R * Bz_R
-    )
-    flux_Energy = 0.5 * (
-        (en_L + P_L) * vx_L
-        - Bx_L * (vx_L * Bx_L + vy_L * By_L + vz_L * Bz_L)
-        + (en_R + P_R) * vx_R
-        - Bx_R * (vx_R * Bx_R + vy_R * By_R + vz_R * Bz_R)
-    )
-    flux_By = 0.5 * (By_L * vx_L - Bx_L * vy_L + By_R * vx_R - Bx_R * vy_R)
-    flux_Bz = 0.5 * (Bz_L * vx_L - Bx_L * vz_L + Bz_R * vx_R - Bx_R * vz_R)
-
-    C_L = cf_L + np.abs(vx_L)
-    C_R = cf_R + np.abs(vx_R)
-    C = np.maximum(C_L, C_R)
-
-    # !!! apply Boris correction to U states
-    rhoA_L = (Bx_L**2 + By_L**2 + Bz_L**2) / (c_limit**2)
-    rhoA_R = (Bx_R**2 + By_R**2 + Bz_R**2) / (c_limit**2)
-
-    # add stabilizing diffusive term
-    flux_Mass -= C * 0.5 * (rho_R - rho_L)
-    flux_Momx -= C * 0.5 * ((rho_R + rhoA_R) * vx_R - (rho_L + rhoA_L) * vx_L)  # !!!
-    flux_Momy -= C * 0.5 * ((rho_R + rhoA_R) * vy_R - (rho_L + rhoA_L) * vy_L)
-    flux_Momz -= C * 0.5 * ((rho_R + rhoA_R) * vz_R - (rho_L + rhoA_L) * vz_L)
-    flux_Energy -= C * 0.5 * (en_R - en_L)
-    flux_By -= C * 0.5 * (By_R - By_L)
-    flux_Bz -= C * 0.5 * (Bz_R - Bz_L)
-
-    return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
+RIEMANN_SOLVERS = {
+    "llf": get_flux_llf,
+    "hll": get_flux_hll,
+    "hlld": get_flux_hlld,
+}
 
 
-def get_flux(
-    method,
-    rho_L,
-    rho_R,
-    vx_L,
-    vx_R,
-    vy_L,
-    vy_R,
-    vz_L,
-    vz_R,
-    P_L,
-    P_R,
-    Bx_L,
-    Bx_R,
-    By_L,
-    By_R,
-    Bz_L,
-    Bz_R,
-    gamma,
-    c_limit,
-):
-    if method == "llf":
-        return get_flux_llf(
-            rho_L,
-            rho_R,
-            vx_L,
-            vx_R,
-            vy_L,
-            vy_R,
-            vz_L,
-            vz_R,
-            P_L,
-            P_R,
-            Bx_L,
-            Bx_R,
-            By_L,
-            By_R,
-            Bz_L,
-            Bz_R,
-            gamma,
-            c_limit,
-        )
-    elif method == "hlld":
-        return get_flux_hlld(
-            rho_L,
-            rho_R,
-            vx_L,
-            vx_R,
-            vy_L,
-            vy_R,
-            vz_L,
-            vz_R,
-            P_L,
-            P_R,
-            Bx_L,
-            Bx_R,
-            By_L,
-            By_R,
-            Bz_L,
-            Bz_R,
-            gamma,
-            c_limit,
-        )
-    else:
-        raise ValueError(f"Unknown method {method}")
+def get_flux(method, Bn, W_L, W_R, gamma, c_limit):
+    try:
+        solver = RIEMANN_SOLVERS[method]
+    except KeyError:
+        raise ValueError(
+            f"Unknown Riemann solver {method!r}; choose from {sorted(RIEMANN_SOLVERS)}"
+        ) from None
+    return solver(Bn, W_L, W_R, gamma, c_limit)
 
 
-def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, c_limit):
+def get_dudt(rho, vx, vy, vz, p, bx, by, Bz, dx, gamma, c_limit, opts):
     """single stage of a runge-kutta method to return dudt of all these variables"""
     Bx, By = get_avg(bx, by)
 
-    rho_dx, rho_dy = get_gradient(rho, dx)
-    vx_dx, vx_dy = get_gradient(vx, dx)
-    vy_dx, vy_dy = get_gradient(vy, dx)
-    vz_dx, vz_dy = get_gradient(vz, dx)
-    P_dx, P_dy = get_gradient(P, dx)
-    Bx_dx, Bx_dy = get_gradient(Bx, dx)
-    By_dx, By_dy = get_gradient(By, dx)
-    Bz_dx, Bz_dy = get_gradient(Bz, dx)
+    fields = {
+        "rho": rho,
+        "vx": vx,
+        "vy": vy,
+        "vz": vz,
+        "p": p,
+        "Bx": Bx,
+        "By": By,
+        "Bz": Bz,
+    }
 
-    # slope limit gradients
-    if use_slope_limiting:
-        rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
-        vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
-        vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
-        vz_dx, vz_dy = slope_limit(vz, dx, vz_dx, vz_dy)
-        P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
-        Bx_dx, Bx_dy = slope_limit(Bx, dx, Bx_dx, Bx_dy)
-        By_dx, By_dy = slope_limit(By, dx, By_dx, By_dy)
-        Bz_dx, Bz_dy = slope_limit(Bz, dx, Bz_dx, Bz_dy)
+    faces = {}
+    for name, f in fields.items():
+        f_dx, f_dy = get_gradient(f, dx)
+        if opts.slope_limiting:
+            f_dx, f_dy = slope_limit(f, dx, f_dx, f_dy)
+        faces[name] = extrapolate_in_space_to_face(f, f_dx, f_dy, dx)
 
-    # extrapolate in space to face centers
-    rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_in_space_to_face(
-        rho, rho_dx, rho_dy, dx
-    )
-    vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_in_space_to_face(vx, vx_dx, vx_dy, dx)
-    vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_in_space_to_face(vy, vy_dx, vy_dy, dx)
-    vz_XL, vz_XR, vz_YL, vz_YR = extrapolate_in_space_to_face(vz, vz_dx, vz_dy, dx)
-    P_XL, P_XR, P_YL, P_YR = extrapolate_in_space_to_face(P, P_dx, P_dy, dx)
-    Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_in_space_to_face(Bx, Bx_dx, Bx_dy, dx)
-    By_XL, By_XR, By_YL, By_YR = extrapolate_in_space_to_face(By, By_dx, By_dy, dx)
-    Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolate_in_space_to_face(Bz, Bz_dx, Bz_dy, dx)
+    # keep the reconstructed states physical
+    for name, floor in (("rho", SMALL_RHO), ("p", SMALL_P)):
+        faces[name] = tuple(np.maximum(f, floor) for f in faces[name])
 
-    # compute fluxes
+    def face(name, i):
+        return faces[name][i]
+
+    # x-direction: the normal field is the face-centered bx, which constrained
+    # transport keeps single-valued -- no reconstruction, and hence no spurious
+    # div(B) monopole force in the Riemann problem.
     (
         flux_Mass_X,
         flux_Momx_X,
@@ -884,26 +773,14 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, c_limit):
         flux_By_X,
         flux_Bz_X,
     ) = get_flux(
-        riemann_solver,
-        rho_XR,
-        rho_XL,
-        vx_XR,
-        vx_XL,
-        vy_XR,
-        vy_XL,
-        vz_XR,
-        vz_XL,
-        P_XR,
-        P_XL,
-        Bx_XR,
-        Bx_XL,
-        By_XR,
-        By_XL,
-        Bz_XR,
-        Bz_XL,
+        opts.riemann_solver,
+        bx,
+        tuple(face(n, 0) for n in ("rho", "vx", "vy", "vz", "p", "By", "Bz")),
+        tuple(face(n, 1) for n in ("rho", "vx", "vy", "vz", "p", "By", "Bz")),
         gamma,
         c_limit,
     )
+    # y-direction: cyclic permutation (x, y, z) -> (y, z, x)
     (
         flux_Mass_Y,
         flux_Momy_Y,
@@ -913,26 +790,14 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, c_limit):
         flux_Bz_Y,
         flux_Bx_Y,
     ) = get_flux(
-        riemann_solver,
-        rho_YR,
-        rho_YL,
-        vy_YR,
-        vy_YL,
-        vz_YR,
-        vz_YL,
-        vx_YR,
-        vx_YL,
-        P_YR,
-        P_YL,
-        By_YR,
-        By_YL,
-        Bz_YR,
-        Bz_YL,
-        Bx_YR,
-        Bx_YL,
+        opts.riemann_solver,
+        by,
+        tuple(face(n, 2) for n in ("rho", "vy", "vz", "vx", "p", "Bz", "Bx")),
+        tuple(face(n, 3) for n in ("rho", "vy", "vz", "vx", "p", "Bz", "Bx")),
         gamma,
         c_limit,
     )
+
     dudt_Mass = dudt_fluxes(flux_Mass_X, flux_Mass_Y, dx)
     dudt_Momx = dudt_fluxes(flux_Momx_X, flux_Momx_Y, dx)
     dudt_Momy = dudt_fluxes(flux_Momy_X, flux_Momy_Y, dx)
@@ -953,82 +818,53 @@ def get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, c_limit):
     )
 
 
-def main():
-    """MHD Simulation"""
-
-    # Check for command line arguments
-    if len(sys.argv) != 3:
-        print("Usage: python mhd-boris.py <problem_id> <c_limit>")
-        return
-
-    # Parse command line argument
-    # problem id & fast speed limit for boris integrator (e.g. 1.0, 1.5, 2.0)
-    prob_id = int(sys.argv[1])
-    c_limit = float(sys.argv[2])
-
-    global N, use_slope_limiting, riemann_solver
-    t = 0.0
-    courant_fac = 0.4
-    t_end = 0.5
-    t_out = 0.01  # draw frequency
-    plot_in_real_time = True
-
-    # Mesh
-    boxsize = 1.0
-    dx = boxsize / N
-    vol = dx**2
-    xlin = np.linspace(0.5 * dx, boxsize - 0.5 * dx, N)
-    X, Y = np.meshgrid(xlin, xlin, indexing="ij")
-    # xlin_node = np.linspace(dx, boxsize, N)
-    # Xn, Yn = np.meshgrid( xlin_node, xlin_node, indexing="ij" )
-
-    # Generate Initial Conditions:
-    gamma = 5.0 / 3.0  # ideal gas gamma
+def get_initial_conditions(prob_id, gamma, X, Y, c_limit, boris_eigenmode=True):
+    """Primitive initial conditions (with GAS pressure p), plus Az and t_end."""
     if prob_id == 1:
         # Orszag-Tang vortex problem
-        # riemann_solver = "hlld"
         t_end = 0.5
         rho = (gamma**2 / (4.0 * np.pi)) * np.ones(X.shape)
         vx = -np.sin(2.0 * np.pi * Y)
         vy = np.sin(2.0 * np.pi * X)
-        P = (gamma / (4.0 * np.pi)) * np.ones(X.shape)  # init. gas pressure
+        vz = np.zeros(X.shape)
+        p = (gamma / (4.0 * np.pi)) * np.ones(X.shape)
         # (Az is at top-right node of each cell)
         Az = np.cos(4.0 * np.pi * X) / (4.0 * np.pi * np.sqrt(4.0 * np.pi)) + np.cos(
             2.0 * np.pi * Y
         ) / (2.0 * np.pi * np.sqrt(4.0 * np.pi))
-        vz = np.zeros(X.shape)
         Bz = np.zeros(X.shape)
+        b_uniform = (0.0, 0.0)
     elif prob_id == 2:
-        # Circularly polarized Alfven wave
-        rho = np.ones(X.shape)
-        P = 0.2 * 0.1 * np.ones(X.shape)  # init. gas pressure
-        amp = 0.1
+        # Circularly polarized Alfven wave travelling in -x, with B_x = 1.
+        #
+        # A circularly polarized wave leaves |B| (and hence rho_A) uniform and
+        # constant, so it stays an *exact* nonlinear solution of the Boris
+        # system -- but only if it is initialized as a Boris eigenmode:
+        #
+        #     dv_perp = +dB_perp / sqrt(rho + rho_A) = gamma_A dB_perp/sqrt(rho)
+        #
+        # The ideal-MHD relation dv_perp = dB_perp/sqrt(rho) is *not* a single
+        # travelling wave of the Boris system.  It splits into counter-moving
+        # Alfven waves of amplitude (1 +/- gamma_A)/2 whose beating makes |Bz|
+        # swing up to amp/gamma_A -- an artifact of the setup, not of the
+        # scheme.  Pass --no-boris-eigenmode to reproduce that.
         t_end = 5.0
-
-        # angled ICs
-        # theta = np.pi / 4.0
-        # Xpar = (np.cos(theta) * X + np.sin(alpthetaha) * Y) * np.sqrt(2.0)
-        # v_perp = 0.1 * np.sin(2.0 * np.pi * Xpar)
-        # v_par = np.zeros(X.shape)
-        # b_perp = 0.1 * np.sin(2.0*np.pi*Xpar)
-        # vx = v_par * np.cos(theta) - v_perp * np.sin(theta)
-        # vy = v_par * np.sin(theta) + v_perp * np.cos(theta)
-        # Az = amp / (2.0 * np.pi) * np.cos(2.0 * np.pi * Xpar)
-        # vz = amp * np.cos(2.0 * np.pi * Xpar)
-        # Bz = amp * np.cos(2.0 * np.pi * Xpar)
-
-        # simplified ICs
+        amp = 0.1
+        rho = np.ones(X.shape)
+        p = 0.2 * 0.1 * np.ones(X.shape)
+        b_uniform = (1.0, 0.0)
+        vA2 = (b_uniform[0] ** 2 + amp**2) / 1.0  # |B|^2/rho is uniform
+        gamma_A = 1.0 / np.sqrt(1.0 + vA2 / c_limit**2) if boris_eigenmode else 1.0
         vx = np.zeros(X.shape)
-        vy = amp * np.sin(2.0 * np.pi * X)
-        vz = amp * np.cos(2.0 * np.pi * X)
+        vy = gamma_A * amp * np.sin(2.0 * np.pi * X)  # !!!
+        vz = gamma_A * amp * np.cos(2.0 * np.pi * X)  # !!!
         Az = amp / (2.0 * np.pi) * np.cos(2.0 * np.pi * X)
         Bz = amp * np.cos(2.0 * np.pi * X)
-
     elif prob_id == 3:
         # Magnetic Field Loop Test
         t_end = 1.0
         rho = np.ones(X.shape)
-        P = np.ones(X.shape)
+        p = np.ones(X.shape)
         vx = np.ones(X.shape) * np.sin(np.pi / 3.0)
         vy = np.ones(X.shape) * np.cos(np.pi / 3.0)
         vz = np.zeros(X.shape)
@@ -1037,25 +873,141 @@ def main():
         r0 = 0.3
         r = np.sqrt((X - 0.5) ** 2 + (Y - 0.5) ** 2)
         Az = np.maximum(anorm * (r0 - r), 0)
+        b_uniform = (0.0, 0.0)
+    elif prob_id == 4:
+        # Orszag-Tang with a strong uniform out-of-plane guide field.
+        #
+        # This is the regime the Boris correction is actually *for*: the guide
+        # field makes the plasma low-beta, so vA >> max(c_s, |v|) and capping
+        # the Alfven speed buys a real timestep while the in-plane dynamics is
+        # still set by the flow.  Plain Orszag-Tang (problem 1) has vA ~ c_s ~
+        # |v|, so there is nothing for Boris to win there.
+        t_end = 0.5
+        Bz0 = 3.0
+        rho = (gamma**2 / (4.0 * np.pi)) * np.ones(X.shape)
+        vx = -np.sin(2.0 * np.pi * Y)
+        vy = np.sin(2.0 * np.pi * X)
+        vz = np.zeros(X.shape)
+        p = (gamma / (4.0 * np.pi)) * np.ones(X.shape)
+        Az = np.cos(4.0 * np.pi * X) / (4.0 * np.pi * np.sqrt(4.0 * np.pi)) + np.cos(
+            2.0 * np.pi * Y
+        ) / (2.0 * np.pi * np.sqrt(4.0 * np.pi))
+        Bz = Bz0 * np.ones(X.shape)
+        b_uniform = (0.0, 0.0)
     else:
-        print("Problem ID not recognized")
-        return
+        raise ValueError(f"Problem ID {prob_id} not recognized")
 
+    return rho, vx, vy, vz, p, Bz, Az, b_uniform, t_end
+
+
+def get_timestep(rho, vx, vy, vz, p, Bx, By, Bz, gamma, dx, c_limit, courant_fac):
+    """
+    CFL timestep from the Boris-corrected fast magnetosonic speed.  The
+    directional fast speeds (along x and along y) are used rather than the
+    isotropic upper bound sqrt(a^2 + vA^2), which is what the wave fan of the
+    Riemann problem actually sees.
+    """
+    cf_x, _ = get_boris_speeds(rho, p, Bx, By, Bz, gamma, c_limit)  # !!!
+    cf_y, _ = get_boris_speeds(rho, p, By, Bz, Bx, gamma, c_limit)  # !!!
+    cf = np.maximum(cf_x, cf_y)
+
+    return courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2)))
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="2.5D constrained-transport MHD with a Boris correction"
+    )
+    parser.add_argument(
+        "prob_id",
+        type=int,
+        help="1 = Orszag-Tang, 2 = Alfven wave, 3 = field loop, "
+        "4 = Orszag-Tang with a low-beta guide field",
+    )
+    parser.add_argument(
+        "c_limit",
+        type=float,
+        help="Boris speed limit (use 'inf' to disable the correction)",
+    )
+    parser.add_argument("-N", "--resolution", type=int, default=128)
+    parser.add_argument(
+        "-s",
+        "--riemann-solver",
+        default="hll",
+        choices=sorted(RIEMANN_SOLVERS),
+        help="hlld is vanilla MHD only (requires c_limit = inf)",
+    )
+    parser.add_argument("--courant", type=float, default=0.4)
+    parser.add_argument("--t-end", type=float, default=None)
+    parser.add_argument(
+        "--no-slope-limiting", dest="slope_limiting", action="store_false"
+    )
+    parser.add_argument(
+        "--no-boris-eigenmode",
+        dest="boris_eigenmode",
+        action="store_false",
+        help="problem 2: use the ideal-MHD polarization instead of the Boris "
+        "eigenmode, which makes the wave beat (see get_initial_conditions)",
+    )
+    parser.add_argument(
+        "--no-plot",
+        dest="plot_in_real_time",
+        action="store_false",
+        help="skip the live plot (much faster for batch runs)",
+    )
+    parser.add_argument("-o", "--output-dir", default="output")
+    opts = parser.parse_args(argv)
+
+    if opts.riemann_solver == "hlld" and np.isfinite(opts.c_limit):
+        parser.error(
+            "the hlld solver does not carry the Boris correction; "
+            "use --riemann-solver hll or llf for a finite c_limit"
+        )
+    return opts
+
+
+def main(argv=None):
+    """MHD Simulation"""
+
+    opts = parse_args(argv)
+    prob_id = opts.prob_id
+    c_limit = opts.c_limit
+    N = opts.resolution
+
+    t = 0.0
+    t_out = 0.01  # draw frequency
+
+    # Mesh
+    boxsize = 1.0
+    dx = boxsize / N
+    vol = dx**2
+    xlin = np.linspace(0.5 * dx, boxsize - 0.5 * dx, N)
+    X, Y = np.meshgrid(xlin, xlin, indexing="ij")
+
+    # Generate Initial Conditions:
+    gamma = 5.0 / 3.0  # ideal gas gamma
+    rho, vx, vy, vz, p, Bz, Az, b_uniform, t_end = get_initial_conditions(
+        prob_id, gamma, X, Y, c_limit, opts.boris_eigenmode
+    )
+    if opts.t_end is not None:
+        t_end = opts.t_end
+
+    # a uniform field is divergence-free on its own, so it can simply be added
+    # on top of the curl of Az (which need not be periodic for it)
     bx, by = get_curl(Az, dx)
-    if prob_id == 2:
-        bx = np.ones(X.shape)
+    bx = bx + b_uniform[0]
+    by = by + b_uniform[1]
     Bx, By = get_avg(bx, by)
-
-    # add magnetic pressure to get the total pressure
-    P = P + 0.5 * (Bx**2 + By**2 + Bz**2)
 
     # Get conserved variables
     Mass, Momx, Momy, Momz, Energy = get_conserved(
-        rho, vx, vy, vz, P, Bx, By, Bz, gamma, vol, c_limit
+        rho, vx, vy, vz, p, Bx, By, Bz, gamma, vol, c_limit
     )
 
     # keep track of timesteps
     dt_save = []
+    warned_fast = False
+    warned_pressure = False
 
     # prep figure
     plt.figure(figsize=(4, 4), dpi=80)
@@ -1065,25 +1017,27 @@ def main():
     while t < t_end:
         # get Primitive variables
         Bx, By = get_avg(bx, by)
-        rho, vx, vy, vz, P = get_primitive(
+        rho, vx, vy, vz, p = get_primitive(
             Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limit
         )
 
         # get time step (CFL) = dx / max signal speed
-        # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho)
-        c0 = np.sqrt(
-            gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho
+        dt = get_timestep(
+            rho, vx, vy, vz, p, Bx, By, Bz, gamma, dx, c_limit, opts.courant
         )
+        # what the timestep would have been without the Boris correction: the
+        # ratio is the speedup Boris is actually buying right now.  It is < the
+        # local Boris factor alpha whenever the flow speed, not the fast speed,
+        # sets the CFL limit -- which is the case for most of Orszag-Tang.
+        dt_mhd = get_timestep(
+            rho, vx, vy, vz, p, Bx, By, Bz, gamma, dx, np.inf, opts.courant
+        )
+        dt = min(dt, t_end - t)
+
+        c0 = np.sqrt(gamma * np.maximum(p, SMALL_P) / rho)
         ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
         cf = np.sqrt(c0**2 + ca**2)
-        c0_max = np.max(c0)
-        cf_max = np.max(cf)
-        # alpha = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
-        alpha1 = np.minimum(1.0, c_limit / np.sqrt(c0**2 + ca**2))
         alpha = 1.0 / np.sqrt(1.0 + (ca / c_limit) ** 2)
-        # !!! apply boris factor to wave speeds
-        cf *= alpha
-        dt = courant_fac * np.min(dx / (cf + np.sqrt(vx**2 + vy**2 + vz**2)))
         v_max = np.max(np.sqrt(vx**2 + vy**2 + vz**2))
 
         plot_this_turn = False
@@ -1100,7 +1054,7 @@ def main():
             dudt_Bz,
             dudt_bx,
             dudt_by,
-        ) = get_dudt(rho, vx, vy, vz, P, bx, by, Bz, dx, gamma, c_limit)
+        ) = get_dudt(rho, vx, vy, vz, p, bx, by, Bz, dx, gamma, c_limit, opts)
 
         # update solution
         Mass_1 = apply_dudt(Mass, dudt_Mass, dt)
@@ -1122,10 +1076,20 @@ def main():
         bx = apply_dudt(bx, dudt_bx, 0.5 * dt)
         by = apply_dudt(by, dudt_by, 0.5 * dt)
 
-        # second stage
-        Bx, By = get_avg(bx_1, by_1)
-        rho, vx, vy, vz, P = get_primitive(
-            Mass_1, Momx_1, Momy_1, Momz_1, Energy_1, Bx, By, Bz_1, gamma, vol, c_limit
+        # second stage: evaluated entirely on the predictor state u^1
+        Bx_1, By_1 = get_avg(bx_1, by_1)
+        rho_1, vx_1, vy_1, vz_1, p_1 = get_primitive(
+            Mass_1,
+            Momx_1,
+            Momy_1,
+            Momz_1,
+            Energy_1,
+            Bx_1,
+            By_1,
+            Bz_1,
+            gamma,
+            vol,
+            c_limit,
         )
         (
             dudt_Mass,
@@ -1136,7 +1100,9 @@ def main():
             dudt_Bz,
             dudt_bx,
             dudt_by,
-        ) = get_dudt(rho, vx, vy, vz, P, bx_1, by_1, Bz, dx, gamma, c_limit)
+        ) = get_dudt(
+            rho_1, vx_1, vy_1, vz_1, p_1, bx_1, by_1, Bz_1, dx, gamma, c_limit, opts
+        )
 
         Mass = apply_dudt(Mass, dudt_Mass, 0.5 * dt)
         Momx = apply_dudt(Momx, dudt_Momx, 0.5 * dt)
@@ -1153,21 +1119,37 @@ def main():
         # save timestep
         dt_save.append(dt)
 
+        # The Boris correction is a semi-relativistic approximation: it is only
+        # valid while the flow is slow compared to the reduced light speed.
+        # Matsumoto et al. (2019) find stability breaks down around |v| ~ 0.5c.
+        if v_max > 0.5 * c_limit and not warned_fast:
+            print(
+                f"WARNING: v_max = {v_max:.3f} > 0.5 * c_limit = "
+                f"{0.5 * c_limit:.3f}; the Boris correction is outside its "
+                "regime of validity and the solution may be badly wrong"
+            )
+            warned_fast = True
+        if np.min(p) <= 0.0 and not warned_pressure:
+            print(f"WARNING: negative gas pressure ({np.min(p):.3e})")
+            warned_pressure = True
+
         # check div B
         divB = get_div(bx, by, dx)
         print(
             "t=",
             f"{t:.4f}",
             " c0_max =",
-            f"{c0_max:.4f}",
+            f"{np.max(c0):.4f}",
             " cf_max =",
-            f"{cf_max:.4f}",
+            f"{np.max(cf):.4f}",
             " v_max=",
             f"{v_max:.4f}",
             " alpha=",
             f"{np.min(alpha):.4f}",
-            " alpha1=",
-            f"{np.min(alpha1):.4f}",
+            " dt/dt_mhd=",
+            f"{dt / dt_mhd:.4f}",
+            " p_min=",
+            f"{np.min(p):.3e}",
             " |divB|=",
             f"{np.mean(np.abs(divB)):.4f}",
             " |Bz|=",
@@ -1175,18 +1157,14 @@ def main():
         )
 
         # plot in real time
-        if (plot_in_real_time and plot_this_turn) or (t >= t_end):
+        if (opts.plot_in_real_time and plot_this_turn) or (t >= t_end):
             plt.cla()
-            # plt.imshow(rho.T, cmap='jet')
-            # plt.clim(0.06, 0.5)
-            if prob_id == 1:
+            if prob_id in (1, 4):
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.8)
             elif prob_id == 2:
-                # plt.imshow(Bz.T, cmap="jet")
-                # plt.clim(-0.1, 0.1)
                 plt.plot(Bz[:, N // 2])
-                plt.ylim(-2.0 * amp, 2.0 * amp)
+                plt.ylim(-0.2, 0.2)
             elif prob_id == 3:
                 plt.imshow(np.sqrt(bx**2 + by**2).T, cmap="jet")
                 plt.clim(0.0, 0.0011)
@@ -1196,37 +1174,36 @@ def main():
                 ax.get_xaxis().set_visible(False)
                 ax.get_yaxis().set_visible(False)
                 ax.set_aspect("equal")
-            plt.pause(0.001)
+            if opts.plot_in_real_time:
+                plt.pause(0.001)
             out_count += 1
 
     print("done!")
 
-    prefix = "output/p" + str(prob_id) + "_"
+    os.makedirs(opts.output_dir, exist_ok=True)
+    prefix = os.path.join(opts.output_dir, "p" + str(prob_id) + "_")
+    tag = str(c_limit)
 
     # Save figure
-    plt.savefig(prefix + "P_B_" + str(c_limit) + ".png", dpi=240)
-    # plt.show()
+    plt.savefig(prefix + "P_B_" + tag + ".png", dpi=240)
 
     # Save rho, P_B, v, vA, cf, and dt_save
     Bx, By = get_avg(bx, by)
-    rho, vx, vy, vz, P = get_primitive(
+    rho, vx, vy, vz, p = get_primitive(
         Mass, Momx, Momy, Momz, Energy, Bx, By, Bz, gamma, vol, c_limit
     )
     P_B = 0.5 * np.sqrt(Bx**2 + By**2 + Bz**2)
     v = np.sqrt(vx**2 + vy**2 + vz**2)
-    # c0 = np.sqrt( gamma*(P-0.5*(Bx**2+By**2+Bz**2))/rho )
-    c0 = np.sqrt(gamma * (np.maximum(P - 0.5 * (Bx**2 + By**2 + Bz**2), 1.0e-16)) / rho)
+    c0 = np.sqrt(gamma * np.maximum(p, SMALL_P) / rho)
     ca = np.sqrt((Bx**2 + By**2 + Bz**2) / rho)
     cf = np.sqrt(c0**2 + ca**2)
-    np.save(prefix + "data_rho_" + str(c_limit) + ".npy", rho.T)
-    np.save(prefix + "data_P_B_" + str(c_limit) + ".npy", P_B.T)
-    np.save(prefix + "data_Bz_" + str(c_limit) + ".npy", Bz.T)
-    np.save(prefix + "data_v_" + str(c_limit) + ".npy", v.T)
-    np.save(prefix + "data_ca_" + str(c_limit) + ".npy", ca.T)
-    np.save(prefix + "data_cf_" + str(c_limit) + ".npy", cf.T)
-    np.save(prefix + "data_dt_" + str(c_limit) + ".npy", dt_save)
-
-    return
+    np.save(prefix + "data_rho_" + tag + ".npy", rho.T)
+    np.save(prefix + "data_P_B_" + tag + ".npy", P_B.T)
+    np.save(prefix + "data_Bz_" + tag + ".npy", Bz.T)
+    np.save(prefix + "data_v_" + tag + ".npy", v.T)
+    np.save(prefix + "data_ca_" + tag + ".npy", ca.T)
+    np.save(prefix + "data_cf_" + tag + ".npy", cf.T)
+    np.save(prefix + "data_dt_" + tag + ".npy", dt_save)
 
 
 if __name__ == "__main__":
