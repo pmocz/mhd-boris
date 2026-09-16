@@ -285,13 +285,32 @@ def get_boris_speeds(rho, p, Bn, Bt1, Bt2, gamma, c_limit):
     return gamma_A * cf, gamma_A  # !!!
 
 
-def get_state_1d(rho, vn, vt1, vt2, p, Bn, Bt1, Bt2, gamma, c_limit):
+def get_state_1d(rho, vn, vt1, vt2, p, Bn, Bt1, Bt2, gamma, c_limit, galilean=False):
     """
     Boris-corrected conserved state and its flux, in the face-aligned frame
     (n, t1, t2).  The fluxes are the ordinary MHD ones -- only the conserved
     momentum carries the Boris correction.  The normal field Bn is shared by
     the left and right states (constrained transport keeps it single-valued),
     so the normal-field flux vanishes identically and is not returned.
+
+    galilean=True carries the Boris inertia through the momentum *flux* too
+    (rho_B v v instead of rho v v).  Matsumoto et al. use rho v v, which is
+    what the semi-relativistic expansion gives, but it leaves rho_A multiplying
+    dv/dt and not (v.grad)v -- so the momentum equation expands to
+
+        M dv/dt + rho (v.grad)v + v drho_A/dt = -grad(p_T) + div(BB),
+
+    which is not Galilean invariant: boost the frame by U and the Alfven speed
+    measured relative to the fluid picks up a dependence on U (the two roots of
+    M d^2 + U rho_A d - Bn^2 = 0 stop being symmetric).  Using rho_B in the
+    flux makes the same expansion read
+
+        M Dv/Dt + v [Drho_A/Dt + rho_A div(v)] = -grad(p_T) + div(BB),
+
+    so the frame dependence vanishes wherever rho_A is advected like a mass
+    density -- exactly, for instance, for a circularly polarized Alfven wave.
+    A residual remains where the field is compressed or amplified; removing
+    that entirely means evolving rho_A as its own advected variable.
     """
     B2 = Bn**2 + Bt1**2 + Bt2**2
     v2 = vn**2 + vt1**2 + vt2**2
@@ -309,11 +328,12 @@ def get_state_1d(rho, vn, vt1, vt2, p, Bn, Bt1, Bt2, gamma, c_limit):
         Bt1,
         Bt2,
     )
+    rho_F = rho_B if galilean else rho  # !!!
     F = (
         rho * vn,
-        rho * vn * vn + pT - Bn * Bn,
-        rho * vn * vt1 - Bn * Bt1,
-        rho * vn * vt2 - Bn * Bt2,
+        rho_F * vn * vn + pT - Bn * Bn,
+        rho_F * vn * vt1 - Bn * Bt1,
+        rho_F * vn * vt2 - Bn * Bt2,
         (en + pT) * vn - Bn * vB,
         Bt1 * vn - Bn * vt1,
         Bt2 * vn - Bn * vt2,
@@ -322,7 +342,7 @@ def get_state_1d(rho, vn, vt1, vt2, p, Bn, Bt1, Bt2, gamma, c_limit):
     return U, F
 
 
-def get_flux_llf(Bn, W_L, W_R, gamma, c_limit):
+def get_flux_llf(Bn, W_L, W_R, gamma, c_limit, galilean=False):
     """
     Calculate fluxes between 2 states with the local Lax-Friedrichs/Rusanov rule
     Bn       is the (single-valued) face-normal magnetic field
@@ -335,10 +355,10 @@ def get_flux_llf(Bn, W_L, W_R, gamma, c_limit):
     rho_R, vn_R, vt1_R, vt2_R, p_R, Bt1_R, Bt2_R = W_R
 
     U_L, F_L = get_state_1d(
-        rho_L, vn_L, vt1_L, vt2_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit
+        rho_L, vn_L, vt1_L, vt2_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit, galilean
     )
     U_R, F_R = get_state_1d(
-        rho_R, vn_R, vt1_R, vt2_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit
+        rho_R, vn_R, vt1_R, vt2_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit, galilean
     )
 
     # !!! Boris-corrected signal speed
@@ -353,7 +373,7 @@ def get_flux_llf(Bn, W_L, W_R, gamma, c_limit):
     )
 
 
-def get_flux_hll(Bn, W_L, W_R, gamma, c_limit):
+def get_flux_hll(Bn, W_L, W_R, gamma, c_limit, galilean=False):
     """
     Calculate fluxes between 2 states with the HLL rule.  Same arguments as
     get_flux_llf.  Cheaper on dissipation than LLF because the two signal
@@ -363,10 +383,10 @@ def get_flux_hll(Bn, W_L, W_R, gamma, c_limit):
     rho_R, vn_R, vt1_R, vt2_R, p_R, Bt1_R, Bt2_R = W_R
 
     U_L, F_L = get_state_1d(
-        rho_L, vn_L, vt1_L, vt2_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit
+        rho_L, vn_L, vt1_L, vt2_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit, galilean
     )
     U_R, F_R = get_state_1d(
-        rho_R, vn_R, vt1_R, vt2_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit
+        rho_R, vn_R, vt1_R, vt2_R, p_R, Bn, Bt1_R, Bt2_R, gamma, c_limit, galilean
     )
 
     cf_L, gamma_A_L = get_boris_speeds(rho_L, p_L, Bn, Bt1_L, Bt2_L, gamma, c_limit)
@@ -393,7 +413,7 @@ def get_flux_hll(Bn, W_L, W_R, gamma, c_limit):
 
 
 # HLLD (adapted from Athena).  Vanilla MHD only -- no Boris correction.
-def get_flux_hlld(Bn, W_L, W_R, gamma, c_limit):
+def get_flux_hlld(Bn, W_L, W_R, gamma, c_limit, galilean=False):
     """
     Calculate fluxes between 2 states with the HLLD solver of
     Miyoshi & Kusano (2005).  Same arguments as get_flux_llf.
@@ -401,8 +421,10 @@ def get_flux_hlld(Bn, W_L, W_R, gamma, c_limit):
     NOTE: this solver assumes the vanilla MHD eigenstructure and is only used
     when the Boris correction is switched off (c_limit = inf).  Its Boris
     generalisation is the subject of Matsumoto et al. (2019) and is not
-    implemented here.
+    implemented here.  `galilean` is accepted for a uniform solver signature
+    and ignored: at c_limit = inf the Boris inertia is just rho.
     """
+    del galilean
 
     SMALL_NUMBER = 1.0e-8
 
@@ -722,14 +744,14 @@ RIEMANN_SOLVERS = {
 }
 
 
-def get_flux(method, Bn, W_L, W_R, gamma, c_limit):
+def get_flux(method, Bn, W_L, W_R, gamma, c_limit, galilean=False):
     try:
         solver = RIEMANN_SOLVERS[method]
     except KeyError:
         raise ValueError(
             f"Unknown Riemann solver {method!r}; choose from {sorted(RIEMANN_SOLVERS)}"
         ) from None
-    return solver(Bn, W_L, W_R, gamma, c_limit)
+    return solver(Bn, W_L, W_R, gamma, c_limit, galilean)
 
 
 def get_dudt(rho, vx, vy, vz, p, bx, by, Bz, dx, gamma, c_limit, opts):
@@ -779,6 +801,7 @@ def get_dudt(rho, vx, vy, vz, p, bx, by, Bz, dx, gamma, c_limit, opts):
         tuple(face(n, 1) for n in ("rho", "vx", "vy", "vz", "p", "By", "Bz")),
         gamma,
         c_limit,
+        opts.galilean,
     )
     # y-direction: cyclic permutation (x, y, z) -> (y, z, x)
     (
@@ -796,6 +819,7 @@ def get_dudt(rho, vx, vy, vz, p, bx, by, Bz, dx, gamma, c_limit, opts):
         tuple(face(n, 3) for n in ("rho", "vy", "vz", "vx", "p", "Bz", "Bx")),
         gamma,
         c_limit,
+        opts.galilean,
     )
 
     dudt_Mass = dudt_fluxes(flux_Mass_X, flux_Mass_Y, dx)
@@ -943,6 +967,21 @@ def parse_args(argv=None):
         "--no-slope-limiting", dest="slope_limiting", action="store_false"
     )
     parser.add_argument(
+        "--boost",
+        type=float,
+        default=0.0,
+        help="add a uniform vx to the initial condition.  An exactly Galilean-"
+        "invariant scheme gives the same solution in the boosted frame; the "
+        "Boris correction does not, unless --galilean is set",
+    )
+    parser.add_argument(
+        "--galilean",
+        action="store_true",
+        help="carry the Boris inertia through the momentum flux as well, which "
+        "restores Galilean invariance (see get_state_1d); departs from "
+        "Matsumoto et al. equations (1)-(8)",
+    )
+    parser.add_argument(
         "--no-boris-eigenmode",
         dest="boris_eigenmode",
         action="store_false",
@@ -991,6 +1030,7 @@ def main(argv=None):
     )
     if opts.t_end is not None:
         t_end = opts.t_end
+    vx = vx + opts.boost
 
     # a uniform field is divergence-free on its own, so it can simply be added
     # on top of the curl of Az (which need not be periodic for it)

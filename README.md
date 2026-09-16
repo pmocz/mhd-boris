@@ -181,6 +181,90 @@ negative at the next step down (1.6 and 5 respectively). For problem 4 it is the
   the low beta where Boris is used.
 - The signal speed is the directional fast speed, not the isotropic bound
   `sqrt(a^2 + v_A^2)`.
+- `--galilean` switches on a Galilean-invariant variant of the correction; see
+  below.
+
+
+## Galilean invariance
+
+The Boris correction as published is **not Galilean invariant**. Expanding the
+momentum equation,
+
+```math
+M \frac{\partial \mathbf{v}}{\partial t}
+ + \rho\,(\mathbf{v}\cdot\nabla)\mathbf{v}
+ + \mathbf{v}\,\frac{\partial \rho_A}{\partial t}
+ = -\nabla p_T + \nabla\cdot(\mathbf{B}\mathbf{B}),
+\qquad M = \rho + \rho_A ,
+```
+
+`rho_A` multiplies `dv/dt` but not the advection `(v.grad)v`. This is not a bug
+in the implementation -- `E x B / c^2` is a Lorentz-covariant momentum, and the
+correction is exactly as Galilean-invariant as relativity is.
+
+The consequence is not academic. Boost the frame by `U` and the Alfven speed
+measured *relative to the fluid* solves `M d^2 + U rho_A d - B_n^2 = 0`, so the
+two roots stop being symmetric. Run with `--boost U` to see it (problem 2,
+`c_limit = 0.5`, where the invariant answer is -0.4454):
+
+| boost `U` | 0 | 0.25 | 0.5 | 1.0 |
+|---|---|---|---|---|
+| as published | -0.4455 | -0.5669 | -0.6937 | -0.9069 |
+| `--galilean` | -0.4455 | -0.4455 | -0.4454 | -0.4452 |
+
+At `U ~ v_A` the speed cap is undone entirely: no speedup, and a wrong answer.
+
+`--galilean` carries the Boris inertia through the momentum flux as well
+(`rho_B v v` in place of `rho v v`), which turns the expansion into
+
+```math
+M \frac{D\mathbf{v}}{Dt}
+ + \mathbf{v}\left[\frac{D\rho_A}{Dt} + \rho_A \nabla\cdot\mathbf{v}\right]
+ = -\nabla p_T + \nabla\cdot(\mathbf{B}\mathbf{B}) .
+```
+
+The frame dependence vanishes wherever `rho_A` is advected like a mass density
+-- exactly so for a circularly polarized Alfven wave, which is why the table
+above is flat to 0.04%. It stays in conservation form, the wave speeds are
+unchanged (`c_f^B = gamma_A c_f` still), and convergence is still 2nd order.
+
+What it costs and buys, at identical `c_limit`:
+
+| problem | c_limit | speedup | change (published) | change (`--galilean`) |
+|---|---|---|---|---|
+| Orszag-Tang | 2.4 | 1.02x | 10.8% | **6.7%** |
+| Orszag-Tang | 1.6 | 1.01x | 21.6% | **13.4%** |
+| Alfven wave | 0.5 | 2.24x | 1.6% | 1.6% |
+| OT + guide field | 6.0 | 1.35x | 2.2% | **1.5%** |
+
+Orszag-Tang improves most, which makes sense -- it has the strongest flows, so
+the non-invariant term `rho_A (v.grad)v` is largest there. Pressure positivity
+is mixed rather than uniformly better: problem 1 at `c_limit = 1.6` stays
+positive with `--galilean` where the published form goes negative, but problem 4
+at `c_limit = 5` is somewhat worse.
+
+A residual `v [Drho_A/Dt + rho_A div(v)]` survives wherever the field is
+compressed or amplified. Removing that too means evolving `rho_A` as its own
+advected variable,
+
+```math
+\frac{\partial \rho_A}{\partial t} + \nabla\cdot(\rho_A \mathbf{v}) = S,
+\qquad
+\frac{\partial (M\mathbf{v})}{\partial t}
+ + \nabla\cdot(M\mathbf{v}\mathbf{v} + p_T\mathbb{I} - \mathbf{B}\mathbf{B})
+ = \mathbf{v}\,S,
+\qquad
+S = -\frac{\rho_A - |\mathbf{B}|^2/c^2}{\tau},
+```
+
+which is Galilean covariant for any `tau` (the source `v S` is just the momentum
+carried by created or destroyed virtual mass). That is not implemented here.
+
+The underlying trade-off: you can have **conservation form**, **Galilean
+invariance**, and **`rho_A` tied instantaneously to `|B|`** -- pick two.
+`--galilean` is off by default so that the default really is equations (1)--(8)
+of Matsumoto et al. None of this touches the energy inconsistency above, which
+is an independent constraint.
 
 
 ## The Boris method
