@@ -648,91 +648,76 @@ def get_flux_hlld(Bn, W_L, W_R, gamma, c_limit, galilean=False):
     #  Compute flux
     #
 
-    flux_Mass = FL_d * (spd1 >= 0)
-    flux_Momx = FL_Mx * (spd1 >= 0)
-    flux_Momy = FL_My * (spd1 >= 0)
-    flux_Momz = FL_Mz * (spd1 >= 0)
-    flux_Energy = FL_E * (spd1 >= 0)
-    flux_By = FL_By * (spd1 >= 0)
-    flux_Bz = FL_Bz * (spd1 >= 0)
+    # Region masks, made mutually exclusive to mirror Athena's if/else-if chain.
+    # Without the "~taken" terms, Bn = 0 with spd2 = spd3 = spd4 = 0 selects both
+    # the L* and R* regions and doubles the flux.
+    # if(spd1 >= 0) return Fl
+    in_L = spd1 >= 0
+    taken = in_L
+    # elseif(spd5 <= 0) return Fr
+    in_R = (spd5 <= 0) & ~taken
+    taken = taken | in_R
+    # elseif(spd2 >= 0) return Fl*
+    in_Lst = (spd2 >= 0) & ~taken
+    taken = taken | in_Lst
+    # elseif(spd3 >= 0) return Fl**
+    in_Ldst = (spd3 >= 0) & ~taken
+    taken = taken | in_Ldst
+    # elseif(spd4 > 0) return Fr**
+    in_Rdst = (spd4 > 0) & ~taken
+    taken = taken | in_Rdst
+    # else return Fr*
+    in_Rst = ~taken
 
-    flux_Mass += FR_d * (spd5 <= 0)
-    flux_Momx += FR_Mx * (spd5 <= 0)
-    flux_Momy += FR_My * (spd5 <= 0)
-    flux_Momz += FR_Mz * (spd5 <= 0)
-    flux_Energy += FR_E * (spd5 <= 0)
-    flux_By += FR_By * (spd5 <= 0)
-    flux_Bz += FR_Bz * (spd5 <= 0)
+    flux_Mass = FL_d * in_L
+    flux_Momx = FL_Mx * in_L
+    flux_Momy = FL_My * in_L
+    flux_Momz = FL_Mz * in_L
+    flux_Energy = FL_E * in_L
+    flux_By = FL_By * in_L
+    flux_Bz = FL_Bz * in_L
 
-    # if(spd2 >= 0)
-    # return Fl * #
-    flux_Mass += (FL_d + spd1 * (ULst_d - rho_L)) * ((spd1 < 0) & (spd2 >= 0))
-    flux_Momx += (FL_Mx + spd1 * (ULst_Mx - Mx_L)) * ((spd1 < 0) & (spd2 >= 0))
-    flux_Momy += (FL_My + spd1 * (ULst_My - My_L)) * ((spd1 < 0) & (spd2 >= 0))
-    flux_Momz += (FL_Mz + spd1 * (ULst_Mz - Mz_L)) * ((spd1 < 0) & (spd2 >= 0))
-    flux_Energy += (FL_E + spd1 * (ULst_E - E_L)) * ((spd1 < 0) & (spd2 >= 0))
-    flux_By += (FL_By + spd1 * (ULst_By - By_L)) * ((spd1 < 0) & (spd2 >= 0))
-    flux_Bz += (FL_Bz + spd1 * (ULst_Bz - Bz_L)) * ((spd1 < 0) & (spd2 >= 0))
+    flux_Mass += FR_d * in_R
+    flux_Momx += FR_Mx * in_R
+    flux_Momy += FR_My * in_R
+    flux_Momz += FR_Mz * in_R
+    flux_Energy += FR_E * in_R
+    flux_By += FR_By * in_R
+    flux_Bz += FR_Bz * in_R
 
-    # elseif(spd3 >= 0)
-    # return Fl *  *
+    flux_Mass += (FL_d + spd1 * (ULst_d - rho_L)) * in_Lst
+    flux_Momx += (FL_Mx + spd1 * (ULst_Mx - Mx_L)) * in_Lst
+    flux_Momy += (FL_My + spd1 * (ULst_My - My_L)) * in_Lst
+    flux_Momz += (FL_Mz + spd1 * (ULst_Mz - Mz_L)) * in_Lst
+    flux_Energy += (FL_E + spd1 * (ULst_E - E_L)) * in_Lst
+    flux_By += (FL_By + spd1 * (ULst_By - By_L)) * in_Lst
+    flux_Bz += (FL_Bz + spd1 * (ULst_Bz - Bz_L)) * in_Lst
+
     tmp = spd2 - spd1
-    flux_Mass += (FL_d - spd1 * rho_L - tmp * ULst_d + spd2 * ULdst_d) * (
-        (spd2 < 0) & (spd3 >= 0)
-    )
-    flux_Momx += (FL_Mx - spd1 * Mx_L - tmp * ULst_Mx + spd2 * ULdst_Mx) * (
-        (spd2 < 0) & (spd3 >= 0)
-    )
-    flux_Momy += (FL_My - spd1 * My_L - tmp * ULst_My + spd2 * ULdst_My) * (
-        (spd2 < 0) & (spd3 >= 0)
-    )
-    flux_Momz += (FL_Mz - spd1 * Mz_L - tmp * ULst_Mz + spd2 * ULdst_Mz) * (
-        (spd2 < 0) & (spd3 >= 0)
-    )
-    flux_Energy += (FL_E - spd1 * E_L - tmp * ULst_E + spd2 * ULdst_E) * (
-        (spd2 < 0) & (spd3 >= 0)
-    )
-    flux_By += (FL_By - spd1 * By_L - tmp * ULst_By + spd2 * ULdst_By) * (
-        (spd2 < 0) & (spd3 >= 0)
-    )
-    flux_Bz += (FL_Bz - spd1 * Bz_L - tmp * ULst_Bz + spd2 * ULdst_Bz) * (
-        (spd2 < 0) & (spd3 >= 0)
-    )
+    flux_Mass += (FL_d - spd1 * rho_L - tmp * ULst_d + spd2 * ULdst_d) * in_Ldst
+    flux_Momx += (FL_Mx - spd1 * Mx_L - tmp * ULst_Mx + spd2 * ULdst_Mx) * in_Ldst
+    flux_Momy += (FL_My - spd1 * My_L - tmp * ULst_My + spd2 * ULdst_My) * in_Ldst
+    flux_Momz += (FL_Mz - spd1 * Mz_L - tmp * ULst_Mz + spd2 * ULdst_Mz) * in_Ldst
+    flux_Energy += (FL_E - spd1 * E_L - tmp * ULst_E + spd2 * ULdst_E) * in_Ldst
+    flux_By += (FL_By - spd1 * By_L - tmp * ULst_By + spd2 * ULdst_By) * in_Ldst
+    flux_Bz += (FL_Bz - spd1 * Bz_L - tmp * ULst_Bz + spd2 * ULdst_Bz) * in_Ldst
 
-    # elseif(spd4 > 0)
-    # return Fr *  *
     tmp = spd4 - spd5
-    flux_Mass += (FR_d - spd5 * rho_R - tmp * URst_d + spd4 * URdst_d) * (
-        (spd3 < 0) & (spd4 > 0)
-    )
-    flux_Momx += (FR_Mx - spd5 * Mx_R - tmp * URst_Mx + spd4 * URdst_Mx) * (
-        (spd3 < 0) & (spd4 > 0)
-    )
-    flux_Momy += (FR_My - spd5 * My_R - tmp * URst_My + spd4 * URdst_My) * (
-        (spd3 < 0) & (spd4 > 0)
-    )
-    flux_Momz += (FR_Mz - spd5 * Mz_R - tmp * URst_Mz + spd4 * URdst_Mz) * (
-        (spd3 < 0) & (spd4 > 0)
-    )
-    flux_Energy += (FR_E - spd5 * E_R - tmp * URst_E + spd4 * URdst_E) * (
-        (spd3 < 0) & (spd4 > 0)
-    )
-    flux_By += (FR_By - spd5 * By_R - tmp * URst_By + spd4 * URdst_By) * (
-        (spd3 < 0) & (spd4 > 0)
-    )
-    flux_Bz += (FR_Bz - spd5 * Bz_R - tmp * URst_Bz + spd4 * URdst_Bz) * (
-        (spd3 < 0) & (spd4 > 0)
-    )
+    flux_Mass += (FR_d - spd5 * rho_R - tmp * URst_d + spd4 * URdst_d) * in_Rdst
+    flux_Momx += (FR_Mx - spd5 * Mx_R - tmp * URst_Mx + spd4 * URdst_Mx) * in_Rdst
+    flux_Momy += (FR_My - spd5 * My_R - tmp * URst_My + spd4 * URdst_My) * in_Rdst
+    flux_Momz += (FR_Mz - spd5 * Mz_R - tmp * URst_Mz + spd4 * URdst_Mz) * in_Rdst
+    flux_Energy += (FR_E - spd5 * E_R - tmp * URst_E + spd4 * URdst_E) * in_Rdst
+    flux_By += (FR_By - spd5 * By_R - tmp * URst_By + spd4 * URdst_By) * in_Rdst
+    flux_Bz += (FR_Bz - spd5 * Bz_R - tmp * URst_Bz + spd4 * URdst_Bz) * in_Rdst
 
-    # else
-    # return Fr *
-    flux_Mass += (FR_d + spd5 * (URst_d - rho_R)) * ((spd4 <= 0) & (spd5 > 0))
-    flux_Momx += (FR_Mx + spd5 * (URst_Mx - Mx_R)) * ((spd4 <= 0) & (spd5 > 0))
-    flux_Momy += (FR_My + spd5 * (URst_My - My_R)) * ((spd4 <= 0) & (spd5 > 0))
-    flux_Momz += (FR_Mz + spd5 * (URst_Mz - Mz_R)) * ((spd4 <= 0) & (spd5 > 0))
-    flux_Energy += (FR_E + spd5 * (URst_E - E_R)) * ((spd4 <= 0) & (spd5 > 0))
-    flux_By += (FR_By + spd5 * (URst_By - By_R)) * ((spd4 <= 0) & (spd5 > 0))
-    flux_Bz += (FR_Bz + spd5 * (URst_Bz - Bz_R)) * ((spd4 <= 0) & (spd5 > 0))
+    flux_Mass += (FR_d + spd5 * (URst_d - rho_R)) * in_Rst
+    flux_Momx += (FR_Mx + spd5 * (URst_Mx - Mx_R)) * in_Rst
+    flux_Momy += (FR_My + spd5 * (URst_My - My_R)) * in_Rst
+    flux_Momz += (FR_Mz + spd5 * (URst_Mz - Mz_R)) * in_Rst
+    flux_Energy += (FR_E + spd5 * (URst_E - E_R)) * in_Rst
+    flux_By += (FR_By + spd5 * (URst_By - By_R)) * in_Rst
+    flux_Bz += (FR_Bz + spd5 * (URst_Bz - Bz_R)) * in_Rst
 
     return flux_Mass, flux_Momx, flux_Momy, flux_Momz, flux_Energy, flux_By, flux_Bz
 
